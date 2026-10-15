@@ -263,18 +263,32 @@ class Runner:
 
     @staticmethod
     def _kill_proc(proc: subprocess.Popen) -> None:
-        """Terminate a stage's whole process group."""
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
+        """Terminate a running stage; on POSIX the whole process group so an
+        mpirun rank tree dies together. os.killpg/getpgid are POSIX-only, so
+        on Windows (Docker-bridged OpenFOAM) we terminate the launcher."""
+        def _term() -> None:
+            if hasattr(os, "killpg") and hasattr(os, "getpgid"):
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                    return
+                except (ProcessLookupError, PermissionError):
+                    pass
             proc.terminate()
+
+        def _kill() -> None:
+            if hasattr(os, "killpg") and hasattr(os, "getpgid"):
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                    return
+                except (ProcessLookupError, PermissionError):
+                    pass
+            proc.kill()
+
+        _term()
         try:
             proc.wait(timeout=8)
         except subprocess.TimeoutExpired:
-            try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                proc.kill()
+            _kill()
 
     @staticmethod
     def _log_tail(path: Path, n: int) -> str:
