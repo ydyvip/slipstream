@@ -1,0 +1,23 @@
+/** Compare runs view strings. Keys must be prefixed `compare.`. */
+export const compare: Record<string, string> = {
+  "compare.title": "Compare runs",
+  "compare.vsMeta": "{a} vs {b}",
+  "compare.exit": "✕ Exit compare",
+  "compare.resultsSideBySide": "Results side by side",
+  "compare.dragCoeff": "Drag coefficient Cd",
+  "compare.liftCoeff": "Lift coefficient Cl",
+  "compare.dragForce": "Drag force",
+  "compare.liftForce": "Lift force",
+  "compare.frontalArea": "Frontal area",
+  "compare.meshCells": "Mesh cells",
+  "compare.runtime": "Runtime",
+  "compare.seriesA": "A · {name}",
+  "compare.seriesB": "B · {name}",
+  "compare.loading": "loading comparison…",
+  "compare.loadFailed": "Failed to load comparison: {msg}",
+  "compare.runHead": "{letter} · {name}",
+  "compare.runSub": "yaw {yaw}° · {speed} m/s · {quality}",
+  "compare.cdOverlay": "Cd convergence overlay",
+  "compare.cdChartTitle": "Cd vs iteration",
+  "compare.cdChartXLabel": "iteration",
+};

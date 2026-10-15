@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type StorageInfo } from "../api";
+import { useT } from "../i18n";
 
 function fmtBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -21,6 +22,7 @@ export function StorageFooter({
   refreshKey: number;
   onPruned: () => void;
 }) {
+  const t = useT();
   const [info, setInfo] = useState<StorageInfo | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -43,8 +45,7 @@ export function StorageFooter({
   const prune = async () => {
     if (
       !window.confirm(
-        `Delete all finished runs and reclaim ${fmtBytes(info.reclaimable_bytes)}? ` +
-          "This cannot be undone.",
+        t("storage.pruneConfirm", { size: fmtBytes(info.reclaimable_bytes) }),
       )
     )
       return;
@@ -61,9 +62,9 @@ export function StorageFooter({
   const compact = async () => {
     if (
       !window.confirm(
-        `Compact finished runs to reclaim ${fmtBytes(info.compactable_bytes)}? ` +
-          "Results and saved visualizations are kept; only the meshes are freed, " +
-          "so new slice angles and streamlines can't be generated for those runs.",
+        t("storage.compactConfirm", {
+          size: fmtBytes(info.compactable_bytes),
+        }),
       )
     )
       return;
@@ -79,9 +80,14 @@ export function StorageFooter({
 
   return (
     <div className="storage-footer">
-      <span className="storage-usage mono" title={`${info.run_count} runs on disk`}>
-        {fmtBytes(info.total_bytes)} · {info.run_count} run
-        {info.run_count === 1 ? "" : "s"}
+      <span
+        className="storage-usage mono"
+        title={t("storage.runsOnDisk", { n: info.run_count })}
+      >
+        {fmtBytes(info.total_bytes)} ·{" "}
+        {info.run_count === 1
+          ? t("storage.runSingular")
+          : t("storage.runPlural", { n: info.run_count })}
       </span>
       <div className="storage-actions">
         {info.compactable_bytes > 0 && (
@@ -89,14 +95,18 @@ export function StorageFooter({
             className="seg"
             disabled={busy}
             onClick={compact}
-            title="Free meshes but keep results and saved views"
+            title={t("storage.compactTitle")}
           >
-            {busy ? "…" : `compact (${fmtBytes(info.compactable_bytes)})`}
+            {busy
+              ? "…"
+              : t("storage.compact", { size: fmtBytes(info.compactable_bytes) })}
           </button>
         )}
         {info.reclaimable_bytes > 0 && (
           <button className="seg storage-clear" disabled={busy} onClick={prune}>
-            {busy ? "…" : `clear (${fmtBytes(info.reclaimable_bytes)})`}
+            {busy
+              ? "…"
+              : t("storage.clear", { size: fmtBytes(info.reclaimable_bytes) })}
           </button>
         )}
       </div>

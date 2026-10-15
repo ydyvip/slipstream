@@ -1,18 +1,11 @@
 import type { RunStatus } from "../api";
-
-const LABELS: Record<RunStatus, string> = {
-  queued: "queued",
-  preparing: "preparing",
-  meshing: "meshing",
-  solving: "solving",
-  postprocessing: "post",
-  done: "done",
-  error: "error",
-  cancelled: "cancelled",
-};
+import { useT } from "../i18n";
 
 export function StatusPill({ status }: { status: RunStatus }) {
-  return <span className={`pill pill-${status}`}>{LABELS[status]}</span>;
+  const t = useT();
+  return (
+    <span className={`pill pill-${status}`}>{t(`detail.status.${status}`)}</span>
+  );
 }
 
 export const ACTIVE_STATUSES: RunStatus[] = [

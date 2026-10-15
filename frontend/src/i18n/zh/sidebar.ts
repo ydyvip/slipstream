@@ -1,0 +1,15 @@
+export const sidebar: Record<string, string> = {
+  "sidebar.newRun": "+ 新建算例",
+  "sidebar.comparePick2": "对比：再选 1 个算例",
+  "sidebar.compareTwo": "已选 2 个算例",
+  "sidebar.compare": "对比",
+  "sidebar.clear": "清除",
+  "sidebar.loadingRuns": "正在加载算例…",
+  "sidebar.noRuns": "还没有算例。",
+  "sidebar.noRunsHint": "拖入 STL 即可开始。",
+  "sidebar.removeFromCompare": "移出对比",
+  "sidebar.selectForCompare": "加入对比",
+  "sidebar.deleteRun": "删除算例",
+  "sidebar.runId": "算例 ID {id}",
+  "sidebar.cd": "Cd",
+};

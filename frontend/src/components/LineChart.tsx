@@ -6,6 +6,7 @@
  */
 import { useMemo, useRef, useState, useEffect } from "react";
 import { linearTicks, logTicks, formatLogTick, formatTick } from "../lib/scale";
+import { useT } from "../i18n";
 
 export interface ChartSeries {
   name: string;
@@ -32,10 +33,12 @@ export function LineChart({
   series,
   yScale = "linear",
   height = 220,
-  xLabel = "iteration",
+  xLabel,
   formatY,
   markers = false,
 }: Props) {
+  const t = useT();
+  const xAxisLabel = xLabel ?? t("chart.xLabelDefault");
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [hoverX, setHoverX] = useState<number | null>(null);
@@ -95,7 +98,7 @@ export function LineChart({
       <div className="chart" ref={wrapRef}>
         <div className="chart-title">{title}</div>
         <div className="chart-empty" style={{ height }}>
-          waiting for data…
+          {t("chart.empty")}
         </div>
       </div>
     );
@@ -229,7 +232,7 @@ export function LineChart({
             textAnchor="middle"
             className="tick axis-label"
           >
-            {xLabel}
+            {xAxisLabel}
           </text>
           {/* series */}
           {paths.map((s) => (
@@ -270,7 +273,7 @@ export function LineChart({
         </svg>
         {hover && (
           <div className="chart-tooltip" style={{ left: tooltipLeft, top: MARGIN.top }}>
-            <div className="tooltip-x">iter {hover.x}</div>
+            <div className="tooltip-x">{t("chart.tooltipIter", { x: hover.x })}</div>
             {hover.rows.map((r) => (
               <div key={r.name} className="tooltip-row">
                 <span className="legend-swatch" style={{ background: r.color }} />

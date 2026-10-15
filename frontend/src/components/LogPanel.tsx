@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { LogTail } from "../api";
+import { useT } from "../i18n";
 
 interface Props {
   log: LogTail | null;
@@ -9,6 +10,7 @@ interface Props {
 
 /** Collapsible, auto-scrolling monospace log tail. */
 export function LogPanel({ log, defaultOpen = true }: Props) {
+  const t = useT();
   const [open, setOpen] = useState(defaultOpen);
   const bodyRef = useRef<HTMLPreElement>(null);
   const pinned = useRef(true);
@@ -23,10 +25,11 @@ export function LogPanel({ log, defaultOpen = true }: Props) {
     <section className="panel log-panel">
       <button className="panel-head panel-toggle" onClick={() => setOpen(!open)}>
         <span className={`chevron${open ? " chevron-open" : ""}`}>▸</span>
-        <span>Log</span>
+        <span>{t("log.title")}</span>
         {log && (
           <span className="panel-head-meta mono">
-            {log.stage} · {log.total.toLocaleString("en-US")} lines
+            {log.stage} ·{" "}
+            {t("log.lines", { n: log.total.toLocaleString("en-US") })}
           </span>
         )}
       </button>
@@ -39,7 +42,7 @@ export function LogPanel({ log, defaultOpen = true }: Props) {
             pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
           }}
         >
-          {log && log.lines.length > 0 ? log.lines.join("\n") : "no log output yet"}
+          {log && log.lines.length > 0 ? log.lines.join("\n") : t("log.empty")}
         </pre>
       )}
     </section>

@@ -8,6 +8,7 @@ import {
   formatForce,
   formatInt,
 } from "../lib/format";
+import { useT } from "../i18n";
 
 // Distinct series colors for the two compared runs (A / B).
 const C_A = "#3987e5";
@@ -37,45 +38,45 @@ interface Row {
 
 const ROWS: Row[] = [
   {
-    label: "Drag coefficient Cd",
+    label: "compare.dragCoeff",
     value: (d) => d.result?.cd ?? null,
     fmt: (v) => formatCoeff(v),
     pct: true,
     lowerBetter: true,
   },
   {
-    label: "Lift coefficient Cl",
+    label: "compare.liftCoeff",
     value: (d) => d.result?.cl ?? null,
     fmt: (v) => formatCoeff(v),
     pct: false,
   },
   {
-    label: "Drag force",
+    label: "compare.dragForce",
     value: (d) => d.result?.drag_N ?? null,
     fmt: formatForce,
     pct: true,
     lowerBetter: true,
   },
   {
-    label: "Lift force",
+    label: "compare.liftForce",
     value: (d) => d.result?.lift_N ?? null,
     fmt: formatForce,
     pct: false,
   },
   {
-    label: "Frontal area",
+    label: "compare.frontalArea",
     value: (d) => d.result?.frontal_area_m2 ?? null,
     fmt: formatArea,
     pct: true,
   },
   {
-    label: "Mesh cells",
+    label: "compare.meshCells",
     value: (d) => d.result?.mesh_cells ?? null,
     fmt: formatInt,
     pct: true,
   },
   {
-    label: "Runtime",
+    label: "compare.runtime",
     value: (d) => d.result?.runtime_s ?? null,
     fmt: formatDuration,
     pct: true,
@@ -88,6 +89,7 @@ const ROWS: Row[] = [
  * overlaid on one chart. Data is fetched once — both runs are done.
  */
 export function CompareView({ aId, bId, onExit, onOpenRun }: Props) {
+  const t = useT();
   const [data, setData] = useState<[Loaded, Loaded] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -120,7 +122,9 @@ export function CompareView({ aId, bId, onExit, onOpenRun }: Props) {
   if (data === null) {
     return (
       <div className="detail detail-loading">
-        {error ? `Failed to load comparison: ${error}` : "loading comparison…"}
+        {error
+          ? t("compare.loadFailed", { msg: error })
+          : t("compare.loading")}
       </div>
     );
   }
@@ -129,7 +133,7 @@ export function CompareView({ aId, bId, onExit, onOpenRun }: Props) {
   const cdSeries: ChartSeries[] = [];
   if (a.history && a.history.iters.length > 0) {
     cdSeries.push({
-      name: `A · ${a.detail.name}`,
+      name: t("compare.seriesA", { name: a.detail.name }),
       color: C_A,
       x: a.history.iters,
       y: a.history.cd,
@@ -137,7 +141,7 @@ export function CompareView({ aId, bId, onExit, onOpenRun }: Props) {
   }
   if (b.history && b.history.iters.length > 0) {
     cdSeries.push({
-      name: `B · ${b.detail.name}`,
+      name: t("compare.seriesB", { name: b.detail.name }),
       color: C_B,
       x: b.history.iters,
       y: b.history.cd,
@@ -148,11 +152,14 @@ export function CompareView({ aId, bId, onExit, onOpenRun }: Props) {
     <th>
       <button className="compare-run-link" onClick={() => onOpenRun(id)}>
         <span className="legend-swatch" style={{ background: color }} />
-        {label} · {run.detail.name}
+        {t("compare.runHead", { letter: label, name: run.detail.name })}
       </button>
       <div className="compare-run-sub mono">
-        yaw {run.detail.config.yaw_deg}° · {run.detail.config.wind_speed} m/s ·{" "}
-        {run.detail.config.quality}
+        {t("compare.runSub", {
+          yaw: run.detail.config.yaw_deg,
+          speed: run.detail.config.wind_speed,
+          quality: run.detail.config.quality,
+        })}
       </div>
     </th>
   );
@@ -161,19 +168,19 @@ export function CompareView({ aId, bId, onExit, onOpenRun }: Props) {
     <div className="detail">
       <header className="detail-header">
         <div className="detail-title">
-          <h1>Compare runs</h1>
+          <h1>{t("compare.title")}</h1>
         </div>
         <div className="detail-meta mono">
-          {a.detail.name} vs {b.detail.name}
+          {t("compare.vsMeta", { a: a.detail.name, b: b.detail.name })}
         </div>
         <button className="btn btn-sm" onClick={onExit}>
-          ✕ Exit compare
+          {t("compare.exit")}
         </button>
       </header>
 
       <section className="panel">
         <div className="panel-head">
-          Results side by side
+          {t("compare.resultsSideBySide")}
           <span className="panel-head-meta">Δ = B − A</span>
         </div>
         <div className="compare-table-wrap">
@@ -205,7 +212,7 @@ export function CompareView({ aId, bId, onExit, onOpenRun }: Props) {
                 }
                 return (
                   <tr key={row.label}>
-                    <td className="compare-metric">{row.label}</td>
+                    <td className="compare-metric">{t(row.label)}</td>
                     <td className="mono">{va !== null ? row.fmt(va) : "—"}</td>
                     <td className="mono">{vb !== null ? row.fmt(vb) : "—"}</td>
                     <td className={`mono compare-delta${cls}`}>{delta}</td>
@@ -218,11 +225,11 @@ export function CompareView({ aId, bId, onExit, onOpenRun }: Props) {
       </section>
 
       <section className="panel">
-        <div className="panel-head">Cd convergence overlay</div>
+        <div className="panel-head">{t("compare.cdOverlay")}</div>
         <div className="charts charts-one">
           <LineChart
-            title="Cd vs iteration"
-            xLabel="iteration"
+            title={t("compare.cdChartTitle")}
+            xLabel={t("compare.cdChartXLabel")}
             series={cdSeries}
           />
         </div>

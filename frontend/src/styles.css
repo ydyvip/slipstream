@@ -17,13 +17,53 @@
   --danger: #e05252;
   --grid: #1e2126;
   --axis: #3a3f47;
-  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --sans: "Chakra Petch", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* CJK fallbacks after the Latin fonts (Chakra Petch / IBM Plex Mono carry no CJK glyphs). */
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Microsoft YaHei", "PingFang SC", monospace;
+  --sans: "Chakra Petch", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, -apple-system, "Segoe UI", sans-serif;
   --chamfer: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* ---------- language switch (top-right system menu) ---------- */
+
+.lang-toggle {
+  position: fixed;
+  top: 26px;
+  right: 46px;
+  z-index: 900;
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--panel);
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.lang-toggle button {
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.lang-toggle button.active {
+  background: var(--accent-dim);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.lang-toggle button:hover:not(.active) {
+  color: var(--text);
+  background: var(--panel-2);
 }
 
 html,

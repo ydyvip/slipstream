@@ -18,32 +18,32 @@ export interface LayerPreset {
 export const LAYER_PRESETS: LayerPreset[] = [
   {
     id: "target",
-    label: "Aim for a y+",
-    hint: "Sizes the first cell in millimeters to land at the y+ you ask for, instead of as a fraction of the surface cell. This is the only mode that can actually move y+ into the valid band.",
+    label: "lib.layersTarget",
+    hint: "lib.layersHintTarget",
     settings: { count: 10, expansion: 1.2, target_y_plus: 100 },
   },
   {
     id: "none",
-    label: "None",
-    hint: "No layer cells. Fastest and most robust to mesh, but the wall shear — and so the viscous part of drag — is badly resolved.",
+    label: "lib.layersNone",
+    hint: "lib.layersHintNone",
     settings: { count: 0 },
   },
   {
     id: "standard",
-    label: "Standard — 3 layers",
-    hint: "The default. Enough for pressure-dominated bluff bodies like a car or a drone frame.",
+    label: "lib.layersStandard",
+    hint: "lib.layersHintStandard",
     settings: null,
   },
   {
     id: "fine",
-    label: "Fine — 6 layers",
-    hint: "A better-resolved wall layer for streamlined shapes — wings, hulls, fairings — where skin friction and separation matter. Lowers y+ only about a quarter; see the note below.",
+    label: "lib.layersFine",
+    hint: "lib.layersHintFine",
     settings: { count: 6, expansion: 1.2, final_thickness: 0.4 },
   },
   {
     id: "veryFine",
-    label: "Very fine — 10 layers",
-    hint: "Deepest stack. Slow to mesh, and on awkward geometry snappyHexMesh may fail to grow it over the whole surface, which is worse than fewer layers grown cleanly — check the y+ report and the coverage afterwards.",
+    label: "lib.layersVeryFine",
+    hint: "lib.layersHintVeryFine",
     settings: { count: 10, expansion: 1.15, final_thickness: 0.5 },
   },
 ];
@@ -61,9 +61,7 @@ export const CUSTOM_PRESET = "custom";
  * height, not a relative one. Until that exists, say so rather than implying the
  * presets can target a y+.
  */
-export const LAYER_YPLUS_CAVEAT =
-  "Layer presets change y+ by about a third at most. They cannot pull a badly " +
-  "out-of-range y+ into the valid band — that needs a finer surface mesh.";
+export const LAYER_YPLUS_CAVEAT = "lib.layersYplusCaveat";
 
 /**
  * The layer settings the backend applies when none are sent. `target_y_plus`

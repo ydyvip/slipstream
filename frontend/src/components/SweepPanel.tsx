@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type GroupDetail } from "../api";
 import { usePoll } from "../hooks/usePoll";
+import { useT } from "../i18n";
 import { isTerminal, StatusPill } from "./StatusPill";
 import { LineChart } from "./LineChart";
 import { formatCoeff, formatForce } from "../lib/format";
@@ -25,6 +26,7 @@ interface Props {
  * numeric table. Polls /api/groups/{gid} every ~3s until all members settle.
  */
 export function SweepPanel({ groupId, activeRunId, onSelectRun }: Props) {
+  const t = useT();
   const fetchGroup = useCallback(() => api.getGroup(groupId), [groupId]);
   const [group, setGroup] = useState<GroupDetail | null>(null);
   const allSettled =
@@ -37,11 +39,11 @@ export function SweepPanel({ groupId, activeRunId, onSelectRun }: Props) {
   if (group === null) {
     return (
       <section className="panel">
-        <div className="panel-head">Sweep</div>
+        <div className="panel-head">{t("sweep.title")}</div>
         <div className="sweep-loading">
           {poll.error
-            ? `Failed to load sweep: ${poll.error.message}`
-            : "loading sweep…"}
+            ? t("sweep.loadFailed", { message: poll.error.message })
+            : t("sweep.loading")}
         </div>
       </section>
     );
@@ -63,7 +65,7 @@ export function SweepPanel({ groupId, activeRunId, onSelectRun }: Props) {
   // Mesh sweeps chart against cell count (millions); sweeps against angle.
   const xOf = (m: (typeof group.runs)[number]) =>
     isMesh ? (m.mesh_cells ?? NaN) / 1e6 : angleOf(m);
-  const xLabel = isMesh ? "mesh cells (millions)" : `${param} (deg)`;
+  const xLabel = isMesh ? t("sweep.xCells") : t("sweep.xAngle", { param });
   const chartDone = isMesh
     ? done.filter((m) => m.mesh_cells !== null && m.mesh_cells !== undefined)
     : done;
@@ -77,21 +79,23 @@ export function SweepPanel({ groupId, activeRunId, onSelectRun }: Props) {
     <section className="panel">
       <div className="panel-head">
         {isTrim
-          ? "Trim solve"
+          ? t("sweep.trimTitle")
           : isMesh
-            ? "Mesh independence"
+            ? t("sweep.meshTitle")
             : param === "pitch"
-              ? "Pitch sweep"
-              : "Yaw sweep"}
+              ? t("sweep.pitchTitle")
+              : t("sweep.yawTitle")}
         <span className="panel-head-meta">
-          {group.wind_speed} m/s ·{" "}
-          {isMesh ? `tol ${formatPct(group.mesh?.tol_pct)}` : group.quality} ·{" "}
-          {settled}/{members.length} finished
+          {t("sweep.metaSpeed", { speed: group.wind_speed })} ·{" "}
+          {isMesh
+            ? t("sweep.metaTol", { pct: formatPct(group.mesh?.tol_pct) })
+            : group.quality}{" "}
+          · {t("sweep.metaFinished", { settled, total: members.length })}
         </span>
         {!isTrim && !isMesh && done.length >= 2 && (
           <button
             className="seg sweep-export"
-            title="Download sweep as CSV"
+            title={t("sweep.exportCsvTitle")}
             onClick={() =>
               downloadText(
                 `${slugify(group.name)}_${param}_sweep.csv`,
@@ -99,25 +103,30 @@ export function SweepPanel({ groupId, activeRunId, onSelectRun }: Props) {
               )
             }
           >
-            export csv
+            {t("sweep.exportCsv")}
           </button>
         )}
       </div>
       {isTrim && trim && (
         <div className="trim-strip mono">
           {trim.converged === null || trim.converged === undefined ? (
-            <>trimming… iteration {trim.iterations || members.length}</>
+            <>{t("sweep.trimming", { n: trim.iterations || members.length })}</>
           ) : trim.error ? (
             <span className="trim-strip-error">
-              TRIM FAILED after {trim.iterations} iteration
-              {trim.iterations === 1 ? "" : "s"} — {trim.error}
+              {t("sweep.trimFailed", {
+                n: trim.iterations,
+                s: trim.iterations === 1 ? "" : "s",
+                msg: trim.error,
+              })}
             </span>
           ) : (
             <>
-              {trim.converged ? "TRIM" : "TRIM (max iterations)"}: tilt{" "}
-              {(trim.tilt_deg ?? 0).toFixed(1)}° · thrust{" "}
-              {Math.round(trim.thrust_g_per_prop ?? 0)} g/prop · drag{" "}
-              {(trim.drag_N ?? 0).toFixed(2)} N
+              {trim.converged ? t("sweep.trimDone") : t("sweep.trimMaxIter")}:{" "}
+              {t("sweep.trimLine", {
+                tilt: (trim.tilt_deg ?? 0).toFixed(1),
+                thrust: Math.round(trim.thrust_g_per_prop ?? 0),
+                drag: (trim.drag_N ?? 0).toFixed(2),
+              })}
             </>
           )}
         </div>
@@ -165,7 +174,7 @@ export function SweepPanel({ groupId, activeRunId, onSelectRun }: Props) {
         <>
           <div className="charts">
             <LineChart
-              title={isMesh ? "Cd vs mesh size" : `Cd vs ${param}`}
+              title={isMesh ? t("sweep.chartCdMesh") : t("sweep.chartCd", { param })}
               xLabel={xLabel}
               markers
               series={[
@@ -182,7 +191,7 @@ export function SweepPanel({ groupId, activeRunId, onSelectRun }: Props) {
                 fixed, so lift there is a constant and not worth a chart. */}
             {!isMesh && hasLift && (
               <LineChart
-                title={`Cl vs ${param}`}
+                title={t("sweep.chartCl", { param })}
                 xLabel={xLabel}
                 markers
                 series={[
@@ -197,7 +206,7 @@ export function SweepPanel({ groupId, activeRunId, onSelectRun }: Props) {
             )}
             {!isMesh && hasLift && (
               <LineChart
-                title={`Lift-to-drag vs ${param}`}
+                title={t("sweep.chartLD", { param })}
                 xLabel={xLabel}
                 markers
                 series={[
@@ -212,12 +221,12 @@ export function SweepPanel({ groupId, activeRunId, onSelectRun }: Props) {
               />
             )}
             <LineChart
-              title={isMesh ? "Drag vs mesh size" : `Drag vs ${param}`}
+              title={isMesh ? t("sweep.chartDragMesh") : t("sweep.chartDrag", { param })}
               xLabel={xLabel}
               markers
               series={[
                 {
-                  name: "drag (N)",
+                  name: t("sweep.dragN"),
                   color: C_AQUA,
                   x: chartDone.map((m) => xOf(m)),
                   // LineChart drops non-finite points.
@@ -230,13 +239,13 @@ export function SweepPanel({ groupId, activeRunId, onSelectRun }: Props) {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>{isMesh ? "mesh" : param}</th>
-                  {isMesh && <th>cells</th>}
+                  <th>{isMesh ? t("sweep.headerMesh") : param}</th>
+                  {isMesh && <th>{t("sweep.headerCells")}</th>}
                   <th>Cd</th>
                   {!isMesh && hasLift && <th>Cl</th>}
                   {!isMesh && hasLift && <th>L/D</th>}
-                  <th>drag</th>
-                  {isMesh && <th>Cd change</th>}
+                  <th>{t("sweep.headerDrag")}</th>
+                  {isMesh && <th>{t("sweep.headerCdChange")}</th>}
                 </tr>
               </thead>
               <tbody>

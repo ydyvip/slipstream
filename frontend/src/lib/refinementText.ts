@@ -8,19 +8,23 @@ import type { RefinementInfo, RefinementOptions } from "../api";
 export function refinementLabel(
   requested: RefinementOptions | undefined,
   meshed: RefinementInfo | null | undefined,
+  t: (key: string, vars?: Record<string, string | number>) => string,
 ): string {
   const parts: string[] = [];
-  if (requested?.long_wake) parts.push("long wake");
+  if (requested?.long_wake) parts.push(t("detail.refine.longWake"));
   if (requested?.prop_slipstream) {
     const zones = meshed?.slipstreams ?? [];
     if (zones.length) {
       const finest = Math.min(...zones.map((z) => z.cell_mm));
       const n = zones.length;
+      const mm = finest.toFixed(1);
       parts.push(
-        `slipstreams (${n} zone${n === 1 ? "" : "s"}, ${finest.toFixed(1)} mm cells)`,
+        n === 1
+          ? t("detail.refine.slipstreamZone", { mm })
+          : t("detail.refine.slipstreamZones", { n, mm }),
       );
     } else {
-      parts.push("slipstreams");
+      parts.push(t("detail.refine.slipstream"));
     }
   }
   return parts.length ? ` · ${parts.join(" · ")}` : "";

@@ -1,4 +1,5 @@
 import type { RunResult } from "../api";
+import { useT } from "../i18n";
 import {
   formatArea,
   formatCoeff,
@@ -16,6 +17,7 @@ const C_VISCOUS = "#199e70";
 
 /** Results summary once a run is done: hero Cd + stat grid. */
 export function ResultsPanel({ result, name }: { result: RunResult; name: string }) {
+  const t = useT();
   // Reference area differs from frontal only when the user overrode it.
   const refDiffers =
     result.ref_area_m2 != null &&
@@ -25,17 +27,17 @@ export function ResultsPanel({ result, name }: { result: RunResult; name: string
   const flowModel = result.flow_model ?? "incompressible";
 
   const stats: { label: string; value: string }[] = [
-    { label: "Lift coefficient Cl", value: formatCoeff(result.cl) },
-    { label: "Drag force", value: formatForce(result.drag_N) },
-    { label: "Lift force", value: formatForce(result.lift_N) },
-    { label: "Frontal area", value: formatArea(result.frontal_area_m2) },
+    { label: t("detail.liftCoeffCl"), value: formatCoeff(result.cl) },
+    { label: t("detail.dragForce"), value: formatForce(result.drag_N) },
+    { label: t("detail.liftForce"), value: formatForce(result.lift_N) },
+    { label: t("detail.frontalArea"), value: formatArea(result.frontal_area_m2) },
     ...(refDiffers
-      ? [{ label: "Reference area", value: formatArea(result.ref_area_m2!) }]
+      ? [{ label: t("detail.referenceArea"), value: formatArea(result.ref_area_m2!) }]
       : []),
     ...(result.reynolds
       ? [
           {
-            label: "Reynolds number",
+            label: t("detail.reynoldsNumber"),
             value:
               result.reynolds >= 1e6
                 ? `${(result.reynolds / 1e6).toFixed(2)}M`
@@ -44,24 +46,24 @@ export function ResultsPanel({ result, name }: { result: RunResult; name: string
         ]
       : []),
     ...(result.flow_model && result.flow_model !== "incompressible"
-      ? [{ label: "Mach number", value: mach.toFixed(2) }]
+      ? [{ label: t("detail.machNumber"), value: mach.toFixed(2) }]
       : []),
-    { label: "Mesh cells", value: formatInt(result.mesh_cells) },
+    { label: t("detail.meshCells"), value: formatInt(result.mesh_cells) },
     // One row per wall patch, model first. Absent on runs solved before y+
     // was measured, which is most older runs.
     ...yPlusRows(result).map((r) => ({
-      label: `y+ ${r.patch} (avg)`,
+      label: t("detail.yPlusAvg", { patch: r.patch }),
       value: `${r.average.toFixed(r.average < 30 ? 1 : 0)} (${r.min.toFixed(
         1,
       )}–${r.max.toFixed(0)})`,
     })),
-    { label: "Runtime", value: formatDuration(result.runtime_s) },
+    { label: t("detail.runtime"), value: formatDuration(result.runtime_s) },
     {
-      label: "Cd std (last 20%)",
+      label: t("detail.cdStd"),
       value: `±${formatCoeff(result.cd_std_last20pct, 4)}`,
     },
     {
-      label: "Conditions",
+      label: t("detail.conditions"),
       value: `${formatSpeed(result.wind_speed)} · ρ ${result.rho}`,
     },
   ];
@@ -78,22 +80,15 @@ export function ResultsPanel({ result, name }: { result: RunResult; name: string
   // that is what this warning used to do.
   if (flowModel === "incompressible" && mach > 0.3)
     warnings.push(
-      `At ${formatSpeed(result.wind_speed)} the flow is compressible (Mach ` +
-        `${mach.toFixed(2)}), and this run used the incompressible solver, ` +
-        "which ignores density changes — treat the numbers as indicative. " +
-        "Re-run with a compressible flow model for a result you can rely on.",
+      t("detail.warnCompressible", {
+        speed: formatSpeed(result.wind_speed),
+        mach: mach.toFixed(2),
+      }),
     );
   if (flowModel === "transonic" && mach > 1.2)
-    warnings.push(
-      `Mach ${mach.toFixed(2)} is past what the steady transonic solver ` +
-        "handles well; strong shocks need the supersonic (density-based) " +
-        "model to stay sharp.",
-    );
+    warnings.push(t("detail.warnTransonic", { mach: mach.toFixed(2) }));
   const mq = result.mesh_quality;
-  if (mq?.rating === "poor")
-    warnings.push(
-      "Mesh quality is poor (high skewness / non-orthogonality) — results may be unreliable. A finer quality setting usually helps.",
-    );
+  if (mq?.rating === "poor") warnings.push(t("detail.warnMeshQuality"));
   // The backend's own verdict wins when present; it decides against the same
   // number that gets averaged. Older runs fall back to the local estimate.
   const unconverged =
@@ -102,13 +97,9 @@ export function ResultsPanel({ result, name }: { result: RunResult; name: string
       result.cd_std_last20pct > 0.02 * Math.max(Math.abs(result.cd), 0.1));
   if (unconverged)
     warnings.push(
-      `Cd never settled — it varied by ±${formatCoeff(
-        result.cd_std_last20pct,
-        3,
-      )} over the averaged window, so the value below is an average of a moving ` +
-        "number, not a result. This usually means a broken or self-intersecting " +
-        "STL rather than too coarse a mesh; repair the geometry into one watertight " +
-        "solid and re-run.",
+      t("detail.warnUnconverged", {
+        std: formatCoeff(result.cd_std_last20pct, 3),
+      }),
     );
 
   // y+ outside the wall-function band is the most common reason a result is
@@ -132,13 +123,21 @@ export function ResultsPanel({ result, name }: { result: RunResult; name: string
   return (
     <section className="panel results-panel">
       <div className="panel-head results-head">
-        <span>Results</span>
+        <span>{t("detail.results")}</span>
         <div className="results-export">
-          <button className="seg" onClick={copyCsv} title="Copy results as CSV">
-            copy
+          <button
+            className="seg"
+            onClick={copyCsv}
+            title={t("detail.copyCsvTitle")}
+          >
+            {t("detail.copy")}
           </button>
-          <button className="seg" onClick={exportCsv} title="Download results CSV">
-            export csv
+          <button
+            className="seg"
+            onClick={exportCsv}
+            title={t("detail.downloadCsvTitle")}
+          >
+            {t("detail.exportCsv")}
           </button>
         </div>
       </div>
@@ -154,19 +153,21 @@ export function ResultsPanel({ result, name }: { result: RunResult; name: string
         )}
         <div className={`hero-stat${unconverged ? " hero-stat-untrusted" : ""}`}>
           <div className="hero-label">
-            Drag coefficient{unconverged && " — not converged"}
+            {t("detail.dragCoefficient")}
+            {unconverged && t("detail.notConverged")}
           </div>
           <div className="hero-value mono">{formatCoeff(result.cd)}</div>
           <div className="hero-sub">
             {result.transient
-              ? `averaged over the final 20% of ${
-                  result.end_time_s?.toPrecision(3) ?? "?"
-                } s (${formatInt(result.iterations)} time steps)`
-              : `averaged over final 20% of ${formatInt(
-                  result.iterations,
-                )} iterations`}
+              ? t("detail.avgTransient", {
+                  time: result.end_time_s?.toPrecision(3) ?? "?",
+                  steps: formatInt(result.iterations),
+                })
+              : t("detail.avgSteady", {
+                  iterations: formatInt(result.iterations),
+                })}
             {result.stopped_early && (
-              <span className="converged-note"> · stopped early (converged)</span>
+              <span className="converged-note">{t("detail.stoppedEarly")}</span>
             )}
           </div>
         </div>
@@ -180,10 +181,13 @@ export function ResultsPanel({ result, name }: { result: RunResult; name: string
         </div>
         {hasSplit && (
           <div className="drag-split">
-            <div className="stat-label">Drag breakdown — pressure vs viscous</div>
+            <div className="stat-label">{t("detail.dragBreakdown")}</div>
             <div
               className="drag-split-bar"
-              title={`pressure ${formatForce(dragP)} / viscous ${formatForce(dragV)}`}
+              title={t("detail.splitTitle", {
+                pressure: formatForce(dragP),
+                viscous: formatForce(dragV),
+              })}
             >
               <div
                 className="drag-split-pressure"
@@ -194,12 +198,14 @@ export function ResultsPanel({ result, name }: { result: RunResult; name: string
             <div className="drag-split-legend">
               <span className="legend-item">
                 <span className="legend-swatch" style={{ background: C_PRESSURE }} />
-                pressure <span className="mono">{formatForce(dragP)}</span> ·{" "}
+                {t("detail.pressure")}{" "}
+                <span className="mono">{formatForce(dragP)}</span> ·{" "}
                 {pctP.toFixed(0)}%
               </span>
               <span className="legend-item">
                 <span className="legend-swatch" style={{ background: C_VISCOUS }} />
-                viscous <span className="mono">{formatForce(dragV)}</span> ·{" "}
+                {t("detail.viscous")}{" "}
+                <span className="mono">{formatForce(dragV)}</span> ·{" "}
                 {(100 - pctP).toFixed(0)}%
               </span>
             </div>

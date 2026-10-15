@@ -1,0 +1,23 @@
+/** Compare runs view strings. Keys must be prefixed `compare.`. */
+export const compare: Record<string, string> = {
+  "compare.title": "对比算例",
+  "compare.vsMeta": "{a} vs {b}",
+  "compare.exit": "✕ 退出对比",
+  "compare.resultsSideBySide": "并排结果对比",
+  "compare.dragCoeff": "阻力系数 Cd",
+  "compare.liftCoeff": "升力系数 Cl",
+  "compare.dragForce": "阻力",
+  "compare.liftForce": "升力",
+  "compare.frontalArea": "正面迎风面积",
+  "compare.meshCells": "网格单元数",
+  "compare.runtime": "运行时长",
+  "compare.seriesA": "A · {name}",
+  "compare.seriesB": "B · {name}",
+  "compare.loading": "正在加载对比…",
+  "compare.loadFailed": "加载对比失败：{msg}",
+  "compare.runHead": "{letter} · {name}",
+  "compare.runSub": "yaw {yaw}° · {speed} m/s · {quality}",
+  "compare.cdOverlay": "Cd 收敛曲线叠加",
+  "compare.cdChartTitle": "Cd 随迭代变化",
+  "compare.cdChartXLabel": "迭代次数",
+};

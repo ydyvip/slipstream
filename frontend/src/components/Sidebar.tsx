@@ -1,3 +1,4 @@
+import { useT } from "../i18n";
 import type { RunSummary } from "../api";
 import { StatusPill } from "./StatusPill";
 import { StorageFooter } from "./StorageFooter";
@@ -35,40 +36,41 @@ export function Sidebar({
   refreshKey,
   onPruned,
 }: Props) {
+  const t = useT();
   return (
     <aside className="sidebar">
       <div className="sidebar-head">
-        <div className="brand">
-          <span className="brand-mark">⌁</span> Slipstream
-        </div>
+        <div className="brand">{t("common.brand")}</div>
         <button className="btn btn-primary btn-block" onClick={onNew}>
-          + New run
+          {t("sidebar.newRun")}
         </button>
       </div>
       {compareIds.length > 0 && (
         <div className="compare-tray">
           <span className="compare-tray-label">
             {compareIds.length === 1
-              ? "compare: pick a 2nd run"
-              : "2 runs selected"}
+              ? t("sidebar.comparePick2")
+              : t("sidebar.compareTwo")}
           </span>
           {compareIds.length === 2 && (
             <button className="btn btn-sm btn-primary" onClick={onOpenCompare}>
-              Compare
+              {t("sidebar.compare")}
             </button>
           )}
           <button className="btn btn-sm btn-ghost" onClick={onClearCompare}>
-            clear
+            {t("sidebar.clear")}
           </button>
         </div>
       )}
       <div className="run-list">
-        {runs === null && <div className="run-list-empty">loading runs…</div>}
+        {runs === null && (
+          <div className="run-list-empty">{t("sidebar.loadingRuns")}</div>
+        )}
         {runs !== null && runs.length === 0 && (
           <div className="run-list-empty">
-            No runs yet.
+            {t("sidebar.noRuns")}
             <br />
-            Drop an STL to get started.
+            {t("sidebar.noRunsHint")}
           </div>
         )}
         {runs?.map((r) => {
@@ -91,8 +93,8 @@ export function Sidebar({
                     className={`icon-btn compare-btn${inCompare ? " compare-btn-active" : ""}`}
                     title={
                       inCompare
-                        ? "Remove from comparison"
-                        : "Select for comparison"
+                        ? t("sidebar.removeFromCompare")
+                        : t("sidebar.selectForCompare")
                     }
                     onClick={(e) => {
                       e.stopPropagation();
@@ -104,7 +106,7 @@ export function Sidebar({
                 )}
                 <button
                   className="icon-btn run-item-delete"
-                  title="Delete run"
+                  title={t("sidebar.deleteRun")}
                   onClick={(e) => {
                     e.stopPropagation();
                     onDelete(r.id);
@@ -117,7 +119,7 @@ export function Sidebar({
                 <StatusPill status={r.status} />
                 {r.status === "done" && cdById[r.id] !== undefined && (
                   <span className="run-item-cd mono">
-                    Cd {formatCoeff(cdById[r.id])}
+                    {t("sidebar.cd")} {formatCoeff(cdById[r.id])}
                   </span>
                 )}
                 {r.status !== "done" && r.status !== "error" && (
@@ -125,7 +127,10 @@ export function Sidebar({
                     {Math.round(r.progress * 100)}%
                   </span>
                 )}
-                <span className="run-item-id mono" title={`Run ID ${r.id}`}>
+                <span
+                  className="run-item-id mono"
+                  title={t("sidebar.runId", { id: r.id })}
+                >
                   #{shortRunId(r.id)}
                 </span>
                 <span className="run-item-date">{formatTimestamp(r.created_at)}</span>

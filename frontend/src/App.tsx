@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
+import { useT } from "./i18n";
 import { usePoll } from "./hooks/usePoll";
+import { LangToggle } from "./components/LangToggle";
 import { Sidebar } from "./components/Sidebar";
 import { MeshImportView } from "./components/MeshImportView";
 import { NewRunView } from "./components/NewRunView";
@@ -14,6 +16,7 @@ type Route =
   | { view: "compare" };
 
 export default function App() {
+  const t = useT();
   const [route, setRoute] = useState<Route>({ view: "new" });
   const [refresh, setRefresh] = useState(0);
   const [detailUnreachable, setDetailUnreachable] = useState(false);
@@ -59,7 +62,7 @@ export default function App() {
   const handleDelete = useCallback(
     async (id: string) => {
       const name = list.data?.find((r) => r.id === id)?.name ?? id;
-      if (!window.confirm(`Delete run "${name}"? This removes all its data.`)) return;
+      if (!window.confirm(t("app.deleteConfirm", { name }))) return;
       try {
         await api.deleteRun(id);
         setRoute((r) => (r.view === "run" && r.id === id ? { view: "new" } : r));
@@ -67,9 +70,9 @@ export default function App() {
         setRefresh((n) => n + 1);
       } catch (e) {
         if (e instanceof ApiError && e.status === 409) {
-          window.alert("This run is currently executing and can't be deleted.");
+          window.alert(t("app.cannotDeleteRunning"));
         } else {
-          window.alert(`Delete failed: ${(e as Error).message}`);
+          window.alert(t("app.deleteFailed", { msg: (e as Error).message }));
         }
       }
     },
@@ -84,7 +87,7 @@ export default function App() {
       setRefresh((n) => n + 1);
       setRoute({ view: "run", id: newId });
     } catch (e) {
-      window.alert(`Re-run failed: ${(e as Error).message}`);
+      window.alert(t("app.rerunFailed", { msg: (e as Error).message }));
     }
   }, []);
 
@@ -111,19 +114,17 @@ export default function App() {
 
   return (
     <div className="app">
+      <LangToggle />
       {foamMissing && !backendDown && (
         <div className="banner-down">
-          OpenFOAM not found — runs will fail. Install it with{" "}
-          <span className="mono">
-            brew install --cask gerlero/openfoam/openfoam
-          </span>{" "}
-          then relaunch.
+          {t("app.openfoamMissing", {
+            cmd: "brew install --cask gerlero/openfoam/openfoam",
+          })}
         </div>
       )}
       {backendDown && (
         <div className="banner-down">
-          Backend unreachable — retrying. Start the server on{" "}
-          <span className="mono">localhost:8000</span>.
+          {t("app.backendDown", { addr: "localhost:8000" })}
         </div>
       )}
       <div className="app-body">

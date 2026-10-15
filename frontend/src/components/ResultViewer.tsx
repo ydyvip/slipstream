@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { useT } from "../i18n";
 import {
   api,
   ApiError,
@@ -39,17 +40,17 @@ interface Props {
   props?: PropDiskM[] | null;
 }
 
-const VIEWS: { label: string; dir: [number, number, number] }[] = [
-  { label: "Iso", dir: [-1.3, -1.8, 1.0] },
-  { label: "Front", dir: [-1, 0, 0] },
-  { label: "Side", dir: [0, -1, 0] },
-  { label: "Top", dir: [0, -0.12, 1] },
+const VIEWS: { id: string; dir: [number, number, number] }[] = [
+  { id: "iso", dir: [-1.3, -1.8, 1.0] },
+  { id: "front", dir: [-1, 0, 0] },
+  { id: "side", dir: [0, -1, 0] },
+  { id: "top", dir: [0, -0.12, 1] },
 ];
 
-const AXIS_LABEL: Record<SliceAxis, string> = {
-  x: "front (x)",
-  y: "side (y)",
-  z: "top (z)",
+const AXIS_KEY: Record<SliceAxis, string> = {
+  x: "detail.axisX",
+  y: "detail.axisY",
+  z: "detail.axisZ",
 };
 
 const AXIS_IDX: Record<SliceAxis, number> = { x: 0, y: 1, z: 2 };
@@ -320,6 +321,7 @@ function propDisks(props: PropDiskM[]): THREE.Group {
  * way the backend prepares it, so all modes overlay consistently.
  */
 export function ResultViewer({ runId, config, model, props }: Props) {
+  const t = useT();
   const [mode, setMode] = useState<Mode>("surface");
   const [showProps, setShowProps] = useState(true);
   const hasProps = !!props && props.length > 0;
@@ -665,9 +667,9 @@ export function ResultViewer({ runId, config, model, props }: Props) {
         if (cancelled) return;
         setLoading(false);
         if (e instanceof ApiError && e.status === 404) {
-          setLoadError("Visualization not available for this run yet.");
+          setLoadError(t("detail.vizUnavailable"));
         } else {
-          setLoadError(`Failed to load: ${(e as Error).message}`);
+          setLoadError(t("detail.failedToLoad", { message: (e as Error).message }));
         }
       }
     };
@@ -765,7 +767,7 @@ export function ResultViewer({ runId, config, model, props }: Props) {
     } catch (e) {
       if (token.cancelled) return;
       setSweepPhase("idle");
-      setLoadError(`Sweep failed: ${(e as Error).message}`);
+      setLoadError(t("detail.sweepFailed", { message: (e as Error).message }));
     }
   };
 
@@ -804,7 +806,12 @@ export function ResultViewer({ runId, config, model, props }: Props) {
     ? (play.frames[sweepFrame]?.pos ?? play.positions[sweepFrame] ?? 0)
     : 0;
   const sweepReadout = play
-    ? `sweep ${sliceAxis} = ${Math.round(sweepPosM * 1000)} mm · ${sweepFrame + 1}/${play.frames.length}`
+    ? t("detail.sweepReadout", {
+        axis: sliceAxis,
+        mm: Math.round(sweepPosM * 1000),
+        frame: sweepFrame + 1,
+        total: play.frames.length,
+      })
     : "";
   const cpMax = surface
     ? Math.max(Math.abs(surface.ranges.cp[0]), Math.abs(surface.ranges.cp[1]))
@@ -847,10 +854,10 @@ export function ResultViewer({ runId, config, model, props }: Props) {
   return (
     <section className="panel viewer-panel">
       <div className="panel-head viewer-panel-head">
-        <span>3D viewer</span>
+        <span>{t("detail.viewer3d")}</span>
         <button
           className="seg viewer-save"
-          title="Save the current view as a PNG"
+          title={t("detail.savePngTitle")}
           onClick={() => {
             const v = viewerRef.current;
             if (!v) return;
@@ -861,28 +868,28 @@ export function ResultViewer({ runId, config, model, props }: Props) {
             );
           }}
         >
-          save png
+          {t("detail.savePng")}
         </button>
         {hasProps && (
           <button
             className={`seg${showProps ? " seg-active" : ""}`}
-            title="Show or hide the propeller disks the solver modeled"
+            title={t("detail.propsTitle")}
             onClick={() => setShowProps((v) => !v)}
           >
-            props
+            {t("detail.props")}
           </button>
         )}
         <div className="segmented">
           {(
             [
-              ["geometry", "Geometry"],
-              ["surface", "Surface pressure"],
-              ["slice", "Flow slice"],
-              ["streamlines", "Streamlines"],
+              ["geometry", "detail.modeGeometry"],
+              ["surface", "detail.modeSurface"],
+              ["slice", "detail.modeSlice"],
+              ["streamlines", "detail.modeStreamlines"],
               // Shocks need a density field, which only the compressible
               // solvers write. Hidden entirely on an incompressible run.
               ...(compressible
-                ? ([["shock", "Shock waves"]] as [Mode, string][])
+                ? ([["shock", "detail.modeShock"]] as [Mode, string][])
                 : []),
             ] as [Mode, string][]
           ).map(([m, label]) => (
@@ -891,7 +898,7 @@ export function ResultViewer({ runId, config, model, props }: Props) {
               className={`seg${mode === m ? " seg-active" : ""}`}
               onClick={() => setMode(m)}
             >
-              {label}
+              {t(label)}
             </button>
           ))}
         </div>
@@ -908,7 +915,7 @@ export function ResultViewer({ runId, config, model, props }: Props) {
                     setPosInput("0");
                   }}
                 >
-                  {AXIS_LABEL[a]}
+                  {t(AXIS_KEY[a])}
                 </button>
               ))}
             </div>
@@ -917,7 +924,7 @@ export function ResultViewer({ runId, config, model, props }: Props) {
                 className="seg seg-step"
                 onClick={() => stepSlice(-1)}
                 disabled={sweeping}
-                title={`move plane −${stepMm} mm`}
+                title={t("detail.movePlaneNeg", { mm: stepMm })}
               >
                 ◀
               </button>
@@ -931,9 +938,13 @@ export function ResultViewer({ runId, config, model, props }: Props) {
                 onChange={(e) => setPosInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && applySlicePos()}
                 title={
-                  posMin !== undefined
-                    ? `plane position along ${sliceAxis}, ${posMin} to ${posMax} mm`
-                    : "plane position (mm)"
+                  posMin !== undefined && posMax !== undefined
+                    ? t("detail.planePosRange", {
+                        axis: sliceAxis,
+                        min: posMin,
+                        max: posMax,
+                      })
+                    : t("detail.planePosMm")
                 }
               />
               <span className="slice-pos-unit">mm</span>
@@ -941,12 +952,12 @@ export function ResultViewer({ runId, config, model, props }: Props) {
                 className="seg seg-step"
                 onClick={() => stepSlice(1)}
                 disabled={sweeping}
-                title={`move plane +${stepMm} mm`}
+                title={t("detail.movePlanePos", { mm: stepMm })}
               >
                 ▶
               </button>
               <button className="seg" onClick={applySlicePos} disabled={sweeping}>
-                Set
+                {t("detail.set")}
               </button>
             </div>
             <div className="segmented">
@@ -954,70 +965,81 @@ export function ResultViewer({ runId, config, model, props }: Props) {
                 className="seg"
                 onClick={() => void startSweep()}
                 disabled={sweeping || !model}
-                title={`Animate ${SWEEP_COUNT} planes across the model along ${sliceAxis}`}
+                title={t("detail.animateSweep", { count: SWEEP_COUNT, axis: sliceAxis })}
               >
-                ▶ Sweep
+                {t("detail.sweep")}
               </button>
               <button
                 className="seg"
                 onClick={stopSweep}
                 disabled={!sweeping}
-                title="Stop and restore the selected slice"
+                title={t("detail.stopTitle")}
               >
-                ■ Stop
+                {t("detail.stop")}
               </button>
             </div>
           </>
         )}
         {mode === "shock" && (
           <>
-            <div className="segmented" title="density rise above freestream that marks the shock front">
+            <div className="segmented" title={t("detail.shockLevelsTitle")}>
               {[6, 12, 25].map((v) => (
                 <button
                   key={v}
                   className={`seg${shockPct === v ? " seg-active" : ""}`}
                   onClick={() => setShockPct(v)}
                 >
-                  {v === 6 ? "weak" : v === 12 ? "standard" : "strong"}
+                  {v === 6
+                    ? t("detail.shockWeak")
+                    : v === 12
+                      ? t("detail.shockStandard")
+                      : t("detail.shockStrong")}
                 </button>
               ))}
             </div>
             <span className="config-note viewer-note">
-              isosurface at +{shockPct}% density
+              {t("detail.isosurfaceAt", { pct: shockPct })}
             </span>
           </>
         )}
         {mode === "streamlines" && (
           <>
-            <div className="segmented" title="seed grid density">
+            <div className="segmented" title={t("detail.seedDensityTitle")}>
               {(["low", "med", "high"] as StreamDensity[]).map((d) => (
                 <button
                   key={d}
                   className={`seg${streamDensity === d ? " seg-active" : ""}`}
                   onClick={() => setStreamDensity(d)}
                 >
-                  {d}
+                  {d === "low"
+                    ? t("detail.densityLow")
+                    : d === "med"
+                      ? t("detail.densityMed")
+                      : t("detail.densityHigh")}
                 </button>
               ))}
             </div>
-            <div className="segmented" title="seed rake span vs model size">
+            <div className="segmented" title={t("detail.seedRakeTitle")}>
               {(["full", "core"] as StreamRegion[]).map((r) => (
                 <button
                   key={r}
                   className={`seg${streamRegion === r ? " seg-active" : ""}`}
                   onClick={() => setStreamRegion(r)}
                 >
-                  {r}
+                  {r === "full" ? t("detail.regionFull") : t("detail.regionCore")}
                 </button>
               ))}
             </div>
-            <label className="viewer-check" title="Dashes travel along the streamlines in the flow direction">
+            <label
+              className="viewer-check"
+              title={t("detail.animateTitle")}
+            >
               <input
                 type="checkbox"
                 checked={flowAnim}
                 onChange={(e) => setFlowAnim(e.target.checked)}
               />
-              <span>animate</span>
+              <span>{t("detail.animate")}</span>
             </label>
           </>
         )}
@@ -1027,8 +1049,8 @@ export function ResultViewer({ runId, config, model, props }: Props) {
         {mode !== "slice" && (
           <div className="view-presets">
             {VIEWS.map((v) => (
-              <button key={v.label} className="seg" onClick={() => setView(v.dir)}>
-                {v.label}
+              <button key={v.id} className="seg" onClick={() => setView(v.dir)}>
+                {t("detail.view" + v.id.charAt(0).toUpperCase() + v.id.slice(1))}
               </button>
             ))}
           </div>
@@ -1036,17 +1058,20 @@ export function ResultViewer({ runId, config, model, props }: Props) {
         {sweeping && (
           <div className="viewer-status">
             {sweepPhase === "sampling"
-              ? `sampling ${sweepSample}/${SWEEP_COUNT}…`
+              ? t("detail.samplingFrame", {
+                  sample: sweepSample,
+                  total: SWEEP_COUNT,
+                })
               : sweepReadout}
           </div>
         )}
         {!sweeping && loading && (
           <div className="viewer-status">
             {mode === "slice" && slicePos !== undefined
-              ? "sampling plane…"
+              ? t("detail.samplingPlane")
               : mode === "streamlines" && !streamlines
-                ? "tracing streamlines…"
-                : "loading…"}
+                ? t("detail.tracingStreamlines")
+                : t("detail.loading")}
           </div>
         )}
         {loadError && <div className="viewer-status viewer-status-error">{loadError}</div>}

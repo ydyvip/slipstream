@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { formatLength, unitHint } from "../lib/unitCheck";
-import { inspectionProblem, repairSummary } from "../lib/repairText";
-import type { RepairJob, StlInspection } from "../api";
+import { formatSize } from "../lib/repairText";
+import type { RepairJob, RepairReport, StlInspection } from "../api";
 import { api, type Quality, type RunConfig, type StlUnit } from "../api";
 import { createViewer, buildSceneHelpers, type Viewer } from "../viewer/scene";
 import { nameFromFilename, formatInt } from "../lib/format";
 import { defaultPropPlacements } from "../lib/geometry";
+import { useT } from "../i18n";
 import {
   CUSTOM_PRESET,
   LAYER_DEFAULTS,
@@ -40,38 +41,71 @@ interface Props {
 // Sea-level speed of sound; matches foamcase.speed_of_sound(288.15 K).
 const SPEED_OF_SOUND = 340.3;
 
+type Translate = (key: string, vars?: Record<string, string | number>) => string;
+
 /** What the chosen solver will and won't do at the speed being asked for. */
 function flowModelHint(
   model: NonNullable<RunConfig["flow_model"]>,
   mach: number,
+  t: Translate,
 ): string {
   const m = Number.isFinite(mach) ? `Mach ${mach.toFixed(2)}. ` : "";
-  if (model === "incompressible")
-    return (
-      m +
-      "Density is held constant — right for almost everything, but it stops " +
-      "being true past about Mach 0.3."
-    );
-  if (model === "transonic")
-    return (
-      m +
-      "Solves density and temperature too, steadily. Runs take a few times " +
-      "longer than incompressible."
-    );
-  return (
-    m +
-    "Density-based and shock-capturing, so shocks stay sharp. Transient and " +
-    "Courant-limited: expect tens of minutes, not minutes."
-  );
+  if (model === "incompressible") return m + t("newrun.flowHintIncompressible");
+  if (model === "transonic") return m + t("newrun.flowHintTransonic");
+  return m + t("newrun.flowHintSupersonic");
 }
 
-const QUALITY_HINTS: Record<Quality, string> = {
-  coarse: "~2–4 min",
-  medium: "~8–15 min",
-  fine: "~30+ min",
+const QUALITY_HINT_KEYS: Record<Quality, string> = {
+  coarse: "newrun.qualityCoarse",
+  medium: "newrun.qualityMedium",
+  fine: "newrun.qualityFine",
 };
 
+/** Localized names for the custom layer fields, for validation messages. */
+const LAYER_FIELD_NAME_KEYS: Record<string, string> = {
+  count: "newrun.layers",
+  expansion: "newrun.expansionRatio",
+  final_thickness: "newrun.finalThickness",
+};
+
+/** What is wrong with a surface, localized (replaces lib/repairText's English). */
+function inspectionProblemText(
+  ins: StlInspection,
+  t: Translate,
+): string {
+  const parts: string[] = [];
+  if (ins.open_edges > 0) {
+    parts.push(
+      t("newrun.inspOpenEdges", { n: ins.open_edges.toLocaleString("en-US") }),
+    );
+  }
+  if (ins.non_manifold_edges > 0) {
+    parts.push(
+      t("newrun.inspNonManifold", {
+        n: ins.non_manifold_edges.toLocaleString("en-US"),
+      }),
+    );
+  }
+  return parts.length ? parts.join(", ") : t("newrun.inspNotClosed");
+}
+
+/** One-line summary of a finished repair, localized. Lengths in the STL's unit. */
+function repairSummaryText(r: RepairReport, unit: string, t: Translate): string {
+  const shift = `${r.shift_median > 0 ? "+" : ""}${formatSize(r.shift_median)}`;
+  const parts = [
+    r.watertight ? t("newrun.repClosed") : t("newrun.repOpen"),
+    t("newrun.repBodies", { n: r.bodies }),
+    t("newrun.repTris", { n: r.triangles_out.toLocaleString("en-US") }),
+    t("newrun.repShift", { shift, unit }),
+    t("newrun.repMax", { max: formatSize(r.deviation_max), unit }),
+  ];
+  return parts.join(" · ");
+}
+
 export function NewRunView({ onCreated, onImportMesh }: Props) {
+  const t = useT();
+  const axisNameT = (name: string): string =>
+    t("newrun.axis" + name.charAt(0).toUpperCase() + name.slice(1));
   const [file, setFile] = useState<File | null>(null);
   const [triangles, setTriangles] = useState<number | null>(null);
   const [dims, setDims] = useState<[number, number, number] | null>(null);
@@ -218,7 +252,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
       value: pitchDeg,
       set: setPitchDeg,
       locked: pitchLocked,
-      lockNote: trimOn ? "solved by trim" : "swept",
+      lockNote: trimOn ? t("newrun.axisLockTrim") : t("newrun.axisLockSwept"),
       nudge: (d: number) => setPitchDeg(nudgeDeg(d)),
     },
     {
@@ -227,7 +261,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
       value: yawDeg,
       set: setYawDeg,
       locked: yawLocked,
-      lockNote: "swept",
+      lockNote: t("newrun.axisLockSwept"),
       nudge: (d: number) => setYawDeg(nudgeDeg(d)),
     },
   ];
@@ -285,13 +319,17 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
             t: "300",
           })),
         );
-        setPropNote(`found ${found.props.length} motors — disks placed on top of them`);
+        setPropNote(
+          t("newrun.foundMotors", { n: found.props.length }),
+        );
       } else {
         setPropRows(seedPropRows(4));
-        setPropNote(`no motors recognized (${found.reason}) — disks placed at the frame corners`);
+        setPropNote(
+          t("newrun.noMotors", { reason: found.reason ?? "" }),
+        );
       }
     } catch {
-      setPropNote("motor detection unavailable — disks placed at the frame corners");
+      setPropNote(t("newrun.detectUnavail"));
     } finally {
       setDetectingProps(false);
     }
@@ -579,7 +617,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
   const acceptFile = useCallback(async (f: File, repaired = false) => {
     setParseError(null);
     if (!/\.stl$/i.test(f.name)) {
-      setParseError(`"${f.name}" is not an .stl file`);
+      setParseError(t("newrun.errNotStl", { name: f.name }));
       return;
     }
     try {
@@ -615,7 +653,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
         },
       );
     } catch (e) {
-      setParseError(`Could not parse STL: ${(e as Error).message}`);
+      setParseError(t("newrun.errParse", { msg: (e as Error).message }));
     }
   }, []);
 
@@ -642,7 +680,9 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
       }
       if (job.status === "error") {
         setRepairJob(null);
-        setRepairError(`Repair failed: ${job.error ?? "unknown error"}`);
+        setRepairError(
+          t("newrun.errRepair", { msg: job.error ?? "unknown error" }),
+        );
         return;
       }
       const buf = await api.getRepairStl(id);
@@ -654,8 +694,8 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
       setRepairJob(null);
       setRepairError(
         err instanceof Error && err.name === "BackendUnreachableError"
-          ? "Backend unreachable — is the server running on :8000?"
-          : `Repair failed: ${(err as Error).message}`,
+          ? t("newrun.errBackend")
+          : t("newrun.errRepair", { msg: (err as Error).message }),
       );
     }
   };
@@ -681,7 +721,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
     if (!file || submitting) return;
     const ws = parseFloat(windSpeed);
     if (!Number.isFinite(ws) || ws <= 0) {
-      setSubmitError("Wind speed must be a positive number");
+      setSubmitError(t("newrun.errWindSpeed"));
       return;
     }
     let sweep: number[] | undefined;
@@ -696,9 +736,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
         angles.length > 8 ||
         angles.some((a) => !Number.isFinite(a))
       ) {
-        setSubmitError(
-          "A sweep needs 2–8 comma-separated angles, e.g. 0, 15, 30, 45",
-        );
+        setSubmitError(t("newrun.errSweepAngles"));
         return;
       }
       sweep = angles;
@@ -707,13 +745,11 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
     if (trimOn) {
       const w = parseFloat(trimWeight);
       if (trimWeight.trim() === "") {
-        setSubmitError(
-          "Enter the craft's weight in grams — the trim attitude and thrust depend on it",
-        );
+        setSubmitError(t("newrun.errTrimWeight"));
         return;
       }
       if (!Number.isFinite(w) || w <= 0) {
-        setSubmitError("Craft weight must be a positive number of grams");
+        setSubmitError(t("newrun.errTrimWeightNum"));
         return;
       }
       trimCfg = { weight_g: w };
@@ -722,7 +758,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
     if (meshSweep) {
       const tol = parseFloat(meshTol);
       if (!Number.isFinite(tol) || tol <= 0 || tol > 50) {
-        setSubmitError("Mesh sweep tolerance must be a percentage above 0 and at most 50");
+        setSubmitError(t("newrun.errMeshTol"));
         return;
       }
       meshTolPct = tol;
@@ -734,7 +770,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
     const pitch = pitchSwept || trimOn ? 0 : parseFloat(pitchDeg);
     const roll = parseFloat(rollDeg || "0");
     if (!Number.isFinite(yaw) || !Number.isFinite(pitch) || !Number.isFinite(roll)) {
-      setSubmitError("Roll, pitch and yaw must be numbers");
+      setSubmitError(t("newrun.errAnglesNum"));
       return;
     }
     let props: RunConfig["props"];
@@ -743,9 +779,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
       for (const r of propRows) {
         const vals = [r.x, r.y, r.z, r.d, r.t].map((v) => parseFloat(v));
         if (vals.some((v) => !Number.isFinite(v)) || vals[3] <= 0 || vals[4] < 0) {
-          setSubmitError(
-            "Each propeller needs finite X/Y/Z, a positive diameter and thrust ≥ 0",
-          );
+          setSubmitError(t("newrun.errPropRows"));
           return;
         }
         props.push({
@@ -759,25 +793,17 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
     if (refArea.trim() !== "") {
       const ra = parseFloat(refArea);
       if (!Number.isFinite(ra) || ra <= 0) {
-        setSubmitError("Reference area must be a positive number (cm²)");
+        setSubmitError(t("newrun.errRefArea"));
         return;
       }
       refAreaCm2 = ra;
     }
     if (flowModel === "supersonic" && ws / SPEED_OF_SOUND < 1.05) {
-      setSubmitError(
-        "Supersonic needs Mach 1.05 or more (about 357 m/s). At and just " +
-          "below Mach 1 the flow is transonic — pressure still travels " +
-          "upstream, which this solver's boundaries assume it cannot. Use " +
-          "the transonic model there.",
-      );
+      setSubmitError(t("newrun.errSupersonic"));
       return;
     }
     if (flowModel === "incompressible" && ws > 200) {
-      setSubmitError(
-        "Above 200 m/s pick a compressible flow model — the incompressible " +
-          "solver ignores the density changes that dominate there.",
-      );
+      setSubmitError(t("newrun.errCompressible"));
       return;
     }
 
@@ -797,7 +823,11 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
         const [lo, hi] = LAYER_LIMITS[key];
         if (!Number.isFinite(v) || v < lo || v > hi) {
           setSubmitError(
-            `Layer ${key.replace("_", " ")} must be a number between ${lo} and ${hi}`,
+            t("newrun.errLayerRange", {
+              key: t(LAYER_FIELD_NAME_KEYS[key] ?? key),
+              lo,
+              hi,
+            }),
           );
           return;
         }
@@ -808,12 +838,12 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
       const ty = parseFloat(targetYPlus);
       const n = parseInt(layerCount, 10);
       if (!Number.isFinite(ty) || ty < 1 || ty > 1000) {
-        setSubmitError("Target y+ must be a number between 1 and 1000");
+        setSubmitError(t("newrun.errYPlus"));
         return;
       }
       if (!Number.isFinite(n) || n < 1 || n > LAYER_LIMITS.count[1]) {
         setSubmitError(
-          `Aiming for a y+ needs between 1 and ${LAYER_LIMITS.count[1]} layers`,
+          t("newrun.errYPlusLayers", { max: LAYER_LIMITS.count[1] }),
         );
         return;
       }
@@ -860,8 +890,8 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
     } catch (err) {
       setSubmitError(
         err instanceof Error && err.name === "BackendUnreachableError"
-          ? "Backend unreachable — is the server running on :8000?"
-          : `Failed to start run: ${(err as Error).message}`,
+          ? t("newrun.errBackend")
+          : t("newrun.errStartRun", { msg: (err as Error).message }),
       );
       setSubmitting(false);
     }
@@ -891,11 +921,11 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                   setRepairError(null);
                 }}
               >
-                replace
+                {t("newrun.replace")}
               </button>
             </div>
             {dims && (
-              <div className="viewer-dims mono" title="model bounding box in the selected unit — check this looks right">
+              <div className="viewer-dims mono" title={t("newrun.boundingBoxTitle")}>
                 {dims.map((d) => (d < 100 ? d.toFixed(1) : Math.round(d)).toString()).join(" × ")} {unit}
               </div>
             )}
@@ -903,8 +933,11 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
             {unitWarn && (
               <div className="viewer-unit-warn" role="alert">
                 <span>
-                  &#9888; Read as {unit}, this model is {formatLength(unitWarn.sizeM)} across
-                  {" — "}the STL was probably exported in a different unit.
+                  &#9888;{" "}
+                  {t("newrun.unitWarn", {
+                    unit,
+                    size: formatLength(unitWarn.sizeM),
+                  })}
                 </span>
                 {unitWarn.suggest && (
                   <button
@@ -912,14 +945,14 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                     className="chip"
                     onClick={() => setUnit(unitWarn.suggest as StlUnit)}
                   >
-                    use {unitWarn.suggest}
+                    {t("newrun.useUnit", { unit: unitWarn.suggest })}
                   </button>
                 )}
               </div>
             )}
             {repairJob?.status === "running" ? (
               <div className="viewer-repair" role="status">
-                <span>Repairing model · {repairJob.stage}</span>
+                <span>{t("newrun.repairing", { stage: repairJob.stage })}</span>
                 <div className="repair-bar">
                   <span style={{ width: `${Math.round(repairJob.progress * 100)}%` }} />
                 </div>
@@ -928,39 +961,46 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
               <div className="viewer-repair viewer-repair-bad" role="alert">
                 <span>&#9888; {repairError}</span>
                 <button type="button" className="chip" onClick={() => void repairModel()}>
-                  try again
+                  {t("newrun.tryAgain")}
                 </button>
               </div>
             ) : originalFileRef.current && repairJob?.report ? (
               <div className="viewer-repair viewer-repair-ok" role="status">
-                <span>&#10003; Repaired: {repairSummary(repairJob.report, unit)}</span>
+                <span>
+                  &#10003;{" "}
+                  {t("newrun.repaired", {
+                    summary: repairSummaryText(repairJob.report, unit, t),
+                  })}
+                </span>
                 <button type="button" className="chip" onClick={() => void restoreOriginal()}>
-                  restore original
+                  {t("newrun.restoreOriginal")}
                 </button>
               </div>
             ) : inspection && !inspection.watertight ? (
               <div className="viewer-repair" role="alert">
                 <span>
-                  &#9888; Not a closed surface ({inspectionProblem(inspection)}). It may
-                  mesh badly or stall the solver.
+                  &#9888;{" "}
+                  {t("newrun.notClosed", {
+                    problem: inspectionProblemText(inspection, t),
+                  })}
                 </span>
                 <button type="button" className="chip" onClick={() => void repairModel()}>
-                  repair model
+                  {t("newrun.repairModel")}
                 </button>
               </div>
             ) : null}
             </div>
             <div className="viewer-hint">
               {selected
-                ? "rotate with the axis controls \u00b7 click empty space to deselect"
+                ? t("newrun.hintSelected")
                 : propsEnabled
-                  ? "click the model to rotate it \u00b7 drag disks to move (\u21e7 = height) \u00b7 wind flows along +X"
-                  : "click the model to rotate it \u00b7 drag to orbit \u00b7 wind flows along +X"}
+                  ? t("newrun.hintProps")
+                  : t("newrun.hintDefault")}
             </div>
             {selected && (
               <div className="rotate-panel">
                 <div className="rotate-panel-head">
-                  <span>Rotate</span>
+                  <span>{t("newrun.rotate")}</span>
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
@@ -969,7 +1009,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                       for (const a of axisRows) if (!a.locked) a.set("0");
                     }}
                   >
-                    reset
+                    {t("newrun.rotateReset")}
                   </button>
                 </div>
                 {axisRows.map((a) => (
@@ -977,7 +1017,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                     <span className={`axis-tag axis-${a.axis.toLowerCase()}`}>
                       {a.axis}
                     </span>
-                    <span className="axis-name">{a.name}</span>
+                    <span className="axis-name">{axisNameT(a.name)}</span>
                     {a.locked ? (
                       <span className="config-note axis-locked">{a.lockNote}</span>
                     ) : (
@@ -998,7 +1038,9 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                           step="any"
                           value={a.value}
                           onChange={(e) => a.set(e.target.value)}
-                          aria-label={`${a.name} degrees`}
+                          aria-label={t("newrun.axisDegreesAria", {
+                            axis: axisNameT(a.name),
+                          })}
                         />
                         {[15, 90].map((d) => (
                           <button
@@ -1032,9 +1074,9 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
             onKeyDown={(e) => e.key === "Enter" && fileInputRef.current?.click()}
           >
             <div className="dropzone-glyph">▲</div>
-            <div className="dropzone-title">Drop an STL here</div>
+            <div className="dropzone-title">{t("newrun.dropTitle")}</div>
             <div className="dropzone-sub">
-              or click to browse · try a sample:{" "}
+              {t("newrun.dropSub")}{" "}
               {(
                 [
                   ["quad", "/quad_frame.stl"],
@@ -1057,13 +1099,17 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                       );
                     }}
                   >
-                    {label}
+                    {t(
+                      "newrun.sample" +
+                        label.charAt(0).toUpperCase() +
+                        label.slice(1),
+                    )}
                   </button>
                 </span>
               ))}
             </div>
             <div className="dropzone-sub">
-              already have a volume mesh?{" "}
+              {t("newrun.haveMesh")}{" "}
               <button
                 type="button"
                 className="dropzone-sample"
@@ -1072,13 +1118,13 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                   onImportMesh();
                 }}
               >
-                import a Gmsh, Fluent or OpenFOAM mesh
+                {t("newrun.importMesh")}
               </button>
             </div>
             <div className="dropzone-steps">
-              <span><i>1</i> drop your STL</span>
-              <span><i>2</i> set wind speed &amp; quality</span>
-              <span><i>3</i> run — get drag, lift &amp; flow</span>
+              <span><i>1</i> {t("newrun.step1")}</span>
+              <span><i>2</i> {t("newrun.step2")}</span>
+              <span><i>3</i> {t("newrun.step3")}</span>
             </div>
             {parseError && <div className="form-error">{parseError}</div>}
             <input
@@ -1097,33 +1143,33 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
       </div>
 
       <form className="panel config-panel" onSubmit={submit}>
-        <div className="panel-head">Analysis setup</div>
+        <div className="panel-head">{t("newrun.panelTitle")}</div>
         <div className="config-fields">
           <label className="field">
-            <span className="field-label">Run name</span>
+            <span className="field-label">{t("newrun.fieldName")}</span>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. quad frame v2"
+              placeholder={t("newrun.placeholderName")}
               disabled={!file}
             />
           </label>
           <label className="field">
-            <span className="field-label">STL unit</span>
+            <span className="field-label">{t("newrun.fieldUnit")}</span>
             <select
               value={unit}
               onChange={(e) => setUnit(e.target.value as StlUnit)}
               disabled={!file}
             >
-              <option value="mm">millimeters (mm)</option>
-              <option value="cm">centimeters (cm)</option>
-              <option value="m">meters (m)</option>
-              <option value="in">inches (in)</option>
+              <option value="mm">{t("newrun.unitMm")}</option>
+              <option value="cm">{t("newrun.unitCm")}</option>
+              <option value="m">{t("newrun.unitM")}</option>
+              <option value="in">{t("newrun.unitIn")}</option>
             </select>
           </label>
           <label className="field">
-            <span className="field-label">Flow model</span>
+            <span className="field-label">{t("newrun.fieldFlowModel")}</span>
             <select
               value={flowModel}
               onChange={(e) =>
@@ -1134,20 +1180,20 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
               disabled={!file}
             >
               <option value="incompressible">
-                Incompressible — up to ~Mach 0.3 (110 m/s)
+                {t("newrun.flowIncompressible")}
               </option>
               <option value="transonic">
-                Transonic — compressible, steady, to ~Mach 1.2
+                {t("newrun.flowTransonic")}
               </option>
               <option value="supersonic">
-                Supersonic — shock-capturing, Mach 1.05+
+                {t("newrun.flowSupersonic")}
               </option>
             </select>
-            <span className="config-note">{flowModelHint(flowModel, machNow)}</span>
+            <span className="config-note">{flowModelHint(flowModel, machNow, t)}</span>
           </label>
           <div className="field-row">
             <label className="field">
-              <span className="field-label">Wind speed (m/s)</span>
+              <span className="field-label">{t("newrun.fieldWindSpeed")}</span>
               <input
                 type="number"
                 value={windSpeed}
@@ -1172,7 +1218,9 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
             </label>
             <label className="field">
               <span className="field-label">
-                {sweepEnabled && sweepParam === "yaw" ? "Yaw angles (deg)" : "Yaw (deg)"}
+                {sweepEnabled && sweepParam === "yaw"
+                  ? t("newrun.fieldYawAngles")
+                  : t("newrun.fieldYaw")}
               </span>
               {sweepEnabled && sweepParam === "yaw" ? (
                 <input
@@ -1183,7 +1231,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                   placeholder="0, 15, 30, 45"
                   spellCheck={false}
                   disabled={!file}
-                  title="2–8 comma-separated yaw angles in degrees"
+                  title={t("newrun.sweepYawTitle")}
                 />
               ) : (
                 <input
@@ -1200,8 +1248,8 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
             <label className="field">
               <span className="field-label">
                 {sweepEnabled && sweepParam === "pitch"
-                  ? "Pitch angles (deg)"
-                  : "Pitch (deg)"}
+                  ? t("newrun.fieldPitchAngles")
+                  : t("newrun.fieldPitch")}
               </span>
               {sweepEnabled && sweepParam === "pitch" ? (
                 <input
@@ -1212,7 +1260,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                   placeholder="0, 15, 30, 45"
                   spellCheck={false}
                   disabled={!file}
-                  title="2–8 comma-separated pitch angles in degrees"
+                  title={t("newrun.sweepPitchTitle")}
                 />
               ) : (
                 <>
@@ -1224,14 +1272,14 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                     max={180}
                     step="any"
                     disabled={!file || trimOn}
-                    title="positive pitch = nose-down forward-flight tilt"
+                    title={t("newrun.pitchTitle")}
                   />
-                  {trimOn && <span className="config-note">solved by trim</span>}
+                  {trimOn && <span className="config-note">{t("newrun.axisLockTrim")}</span>}
                 </>
               )}
             </label>
             <label className="field">
-              <span className="field-label">Roll (deg)</span>
+              <span className="field-label">{t("newrun.fieldRoll")}</span>
               <input
                 type="number"
                 value={rollDeg}
@@ -1240,7 +1288,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                 max={180}
                 step="any"
                 disabled={!file}
-                title="roll about the model's X axis, applied before pitch and yaw"
+                title={t("newrun.rollTitle")}
               />
             </label>
           </div>
@@ -1253,17 +1301,17 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                 if (e.target.checked) setMeshSweep(false);
               }}
               disabled={!file || trimOn}
-              title={trimOn ? "unavailable while solving trim" : undefined}
+              title={trimOn ? t("newrun.sweepTrimUnavail") : undefined}
             />
-            <span>Sweep — queue one run per angle of</span>
+            <span>{t("newrun.sweepLabel")}</span>
             <select
               className="sweep-param"
               value={sweepParam}
               onChange={(e) => setSweepParam(e.target.value as "yaw" | "pitch")}
               disabled={!file || !sweepEnabled}
             >
-              <option value="yaw">yaw</option>
-              <option value="pitch">pitch</option>
+              <option value="yaw">{t("newrun.sweepYaw")}</option>
+              <option value="pitch">{t("newrun.sweepPitch")}</option>
             </select>
           </label>
           <label className="check-field">
@@ -1278,9 +1326,9 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                 }
               }}
               disabled={!file}
-              title="Rerun at coarse, medium and fine meshes until Cd stops changing"
+              title={t("newrun.meshSweepTitle")}
             />
-            <span>Mesh independence — refine until Cd changes ≤</span>
+            <span>{t("newrun.meshSweepLabel")}</span>
             <input
               type="number"
               className="mono mesh-tol"
@@ -1290,7 +1338,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
               step="any"
               onChange={(e) => setMeshTol(e.target.value)}
               disabled={!file || !meshSweep}
-              aria-label="Cd change tolerance (percent)"
+              aria-label={t("newrun.meshTolAria")}
             />
             <span>%</span>
           </label>
@@ -1310,13 +1358,13 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
               }}
               disabled={!file}
             />
-            <span>Propeller disks — powered flow</span>
+            <span>{t("newrun.propsLabel")}</span>
           </label>
           {propsEnabled && (
             <div className="prop-editor">
               <div className="prop-row prop-row-head">
                 <span>x</span><span>y</span><span>z</span>
-                <span>ø</span><span>thrust g</span><span />
+                <span>ø</span><span>{t("newrun.propThrust")}</span><span />
               </div>
               {propRows.map((r, i) => (
                 <div className="prop-row" key={i}>
@@ -1327,7 +1375,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                       step="any"
                       disabled={k === "t" && trimOn}
                       title={
-                        k === "t" && trimOn ? "solved by trim" : undefined
+                        k === "t" && trimOn ? t("newrun.axisLockTrim") : undefined
                       }
                       value={r[k]}
                       onChange={(e) =>
@@ -1342,7 +1390,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                   <button
                     type="button"
                     className="icon-btn"
-                    title="remove propeller"
+                    title={t("newrun.removeProp")}
                     onClick={() =>
                       setPropRows((rows) => rows.filter((_, j) => j !== i))
                     }
@@ -1365,20 +1413,20 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                     ])
                   }
                 >
-                  + add propeller
+                  {t("newrun.addProp")}
                 </button>
                 <button
                   type="button"
                   className="chip"
                   disabled={detectingProps}
                   onClick={() => void detectPropRows()}
-                  title="Find the motors in the model and place one disk on each"
+                  title={t("newrun.findMotorsTitle")}
                 >
-                  {detectingProps ? "finding motors…" : "detect motors"}
+                  {detectingProps ? t("newrun.findingMotors") : t("newrun.detectMotors")}
                 </button>
                 <span className="config-note">
-                  positions/ø in STL units · thrust axis = model +Z
-                  {trimOn && " · thrust solved by trim"}
+                  {t("newrun.propNote")}
+                  {trimOn && ` · ${t("newrun.propTrimNote")}`}
                 </span>
               </div>
               {propNote && <div className="config-note">{propNote}</div>}
@@ -1394,11 +1442,11 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                     }
                   }}
                 />
-                <span>Solve trim attitude</span>
+                <span>{t("newrun.trimLabel")}</span>
               </label>
               {trimEnabled && (
                 <label className="field">
-                  <span className="field-label">Craft weight (g) — required</span>
+                  <span className="field-label">{t("newrun.trimWeightLabel")}</span>
                   <input
                     type="number"
                     className="mono"
@@ -1406,31 +1454,26 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                     onChange={(e) => setTrimWeight(e.target.value)}
                     min={1}
                     step="any"
-                    placeholder="all-up weight, e.g. 650"
+                    placeholder={t("newrun.trimWeightPlaceholder")}
                     required
                   />
-                  <span className="config-note">
-                    iterates pitch + per-prop thrust until thrust balances
-                    drag and weight
-                  </span>
+                  <span className="config-note">{t("newrun.trimHint")}</span>
                 </label>
               )}
             </div>
           )}
           <label className="field">
-            <span className="field-label">
-              Reference area (cm²) — optional
-            </span>
+            <span className="field-label">{t("newrun.refAreaLabel")}</span>
             <input
               type="number"
               className="mono"
               value={refArea}
               min={0}
               step="any"
-              placeholder="auto (frontal area)"
+              placeholder={t("newrun.refAreaPlaceholder")}
               disabled={!file}
               onChange={(e) => setRefArea(e.target.value)}
-              title="Coefficient reference area. Leave blank to use frontal area; set planform area for a wing's lift coefficient."
+              title={t("newrun.refAreaTitle")}
             />
           </label>
           <label className="check-field">
@@ -1440,7 +1483,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
               onChange={(e) => setGroundPlane(e.target.checked)}
               disabled={!file}
             />
-            <span>Ground plane (rolling road) — for cars &amp; vehicles</span>
+            <span>{t("newrun.groundPlaneLabel")}</span>
           </label>
           <label className="check-field">
             <input
@@ -1449,17 +1492,13 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
               onChange={(e) => setSymmetry(e.target.checked)}
               disabled={!file || !symmetryAllowed}
             />
-            <span>
-              Half-model symmetry (≈2× faster) — symmetric models, 0° yaw only
-            </span>
+            <span>{t("newrun.symmetryLabel")}</span>
             {file && !symmetryAllowed && (
-              <span className="config-note">
-                disabled: needs 0° yaw, no props/trim
-              </span>
+              <span className="config-note">{t("newrun.symmetryDisabled")}</span>
             )}
           </label>
           <div className="field">
-            <span className="field-label">Extra mesh refinement — optional</span>
+            <span className="field-label">{t("newrun.refineLabel")}</span>
             <label className="check-field">
               <input
                 type="checkbox"
@@ -1467,7 +1506,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                 onChange={(e) => setLongWake(e.target.checked)}
                 disabled={!file}
               />
-              <span>Longer wake — refine 4 body lengths behind the model</span>
+              <span>{t("newrun.longWakeLabel")}</span>
             </label>
             <label className="check-field">
               <input
@@ -1476,20 +1515,17 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                 onChange={(e) => setPropSlipstream(e.target.checked)}
                 disabled={!file || !propsEnabled}
               />
-              <span>Prop slipstreams — refine the flow through each prop disk</span>
+              <span>{t("newrun.slipstreamLabel")}</span>
               {file && !propsEnabled && (
-                <span className="config-note">needs propeller disks</span>
+                <span className="config-note">{t("newrun.slipstreamNeeds")}</span>
               )}
             </label>
             {(longWake || slipstreamOn) && (
-              <span className="config-note">
-                more cells and a longer run; the slipstream zones tilt with the
-                wind speed and thrust
-              </span>
+              <span className="config-note">{t("newrun.refineHint")}</span>
             )}
           </div>
           <div className="field">
-            <span className="field-label">Boundary layers</span>
+            <span className="field-label">{t("newrun.layersLabel")}</span>
             <select
               value={layerPreset}
               onChange={(e) => {
@@ -1503,21 +1539,21 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
             >
               {LAYER_PRESETS.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.label}
+                  {t(p.label)}
                 </option>
               ))}
-              <option value={CUSTOM_PRESET}>Custom…</option>
+              <option value={CUSTOM_PRESET}>{t("newrun.layersCustom")}</option>
             </select>
             {layerPreset !== CUSTOM_PRESET && (
               <span className="config-note">
-                {LAYER_PRESETS.find((p) => p.id === layerPreset)?.hint}
+                {t(LAYER_PRESETS.find((p) => p.id === layerPreset)?.hint ?? "")}
               </span>
             )}
             {layerPreset === "target" && (
               <>
                 <div className="layer-custom">
                   <label className="field">
-                    <span className="field-label">Target y+</span>
+                    <span className="field-label">{t("newrun.targetYPlus")}</span>
                     <input
                       type="number"
                       className="mono"
@@ -1529,7 +1565,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                     />
                   </label>
                   <label className="field">
-                    <span className="field-label">Layers</span>
+                    <span className="field-label">{t("newrun.layers")}</span>
                     <input
                       type="number"
                       className="mono"
@@ -1541,22 +1577,17 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                     />
                   </label>
                 </div>
-                <span className="config-note">
-                  30–300 is the band the wall functions are valid in; 100 is a
-                  safe middle. The first layer is sized from a flat-plate
-                  friction estimate, so treat it as aiming, not hitting — the
-                  run reports the y+ it actually achieved.
-                </span>
+                <span className="config-note">{t("newrun.yplusBandNote")}</span>
               </>
             )}
             {layerPreset !== "none" && layerPreset !== "target" && (
-              <span className="config-note">{LAYER_YPLUS_CAVEAT}</span>
+              <span className="config-note">{t(LAYER_YPLUS_CAVEAT)}</span>
             )}
             {layerPreset === CUSTOM_PRESET && (
               <>
                 <div className="layer-custom">
                   <label className="field">
-                    <span className="field-label">Layers</span>
+                    <span className="field-label">{t("newrun.layers")}</span>
                     <input
                       type="number"
                       className="mono"
@@ -1568,7 +1599,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                     />
                   </label>
                   <label className="field">
-                    <span className="field-label">Expansion ratio</span>
+                    <span className="field-label">{t("newrun.expansionRatio")}</span>
                     <input
                       type="number"
                       className="mono"
@@ -1580,7 +1611,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                     />
                   </label>
                   <label className="field">
-                    <span className="field-label">Final layer thickness</span>
+                    <span className="field-label">{t("newrun.finalThickness")}</span>
                     <input
                       type="number"
                       className="mono"
@@ -1592,11 +1623,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                     />
                   </label>
                 </div>
-                <span className="config-note">
-                  Thickness is a fraction of the surface cell, not a length.
-                  More layers and a thinner final layer lower y+; the run
-                  reports the y+ it actually achieved.
-                </span>
+                <span className="config-note">{t("newrun.customLayersNote")}</span>
               </>
             )}
             {groundPlane && (
@@ -1608,32 +1635,27 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
                     onChange={(e) => setGroundLayers(e.target.checked)}
                     disabled={!file}
                   />
-                  <span>Also grow layers on the floor</span>
+                  <span>{t("newrun.groundLayersLabel")}</span>
                 </label>
-                <span className="config-note">
-                  Only worth it with a static floor — a rolling road moves with
-                  the air, so it has no boundary layer to resolve.
-                </span>
+                <span className="config-note">{t("newrun.groundLayersHint")}</span>
               </>
             )}
           </div>
           <label className="field">
-            <span className="field-label">Mesh quality</span>
+            <span className="field-label">{t("newrun.meshQuality")}</span>
             <select
               value={quality}
               onChange={(e) => setQuality(e.target.value as Quality)}
               disabled={!file || meshSweep}
             >
-              {(Object.keys(QUALITY_HINTS) as Quality[]).map((q) => (
+              {(Object.keys(QUALITY_HINT_KEYS) as Quality[]).map((q) => (
                 <option key={q} value={q}>
-                  {q} ({QUALITY_HINTS[q]})
+                  {q} ({t(QUALITY_HINT_KEYS[q])})
                 </option>
               ))}
             </select>
             {meshSweep && (
-              <span className="config-note">
-                set by the mesh sweep: coarse, then medium and fine only if needed
-              </span>
+              <span className="config-note">{t("newrun.meshSweepQualityNote")}</span>
             )}
           </label>
         </div>
@@ -1644,18 +1666,22 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
           disabled={!file || submitting}
         >
           {submitting
-            ? "Starting…"
+            ? t("newrun.btnStarting")
             : meshSweep
-              ? "Run mesh independence sweep"
+              ? t("newrun.btnMeshSweep")
               : trimOn
-              ? "Run trim solve"
+              ? t("newrun.btnTrim")
               : sweepEnabled
-                ? `Run ${sweepParam} sweep`
-                : "Run analysis"}
+                ? t("newrun.btnSweep", {
+                    param: t(
+                      "newrun.sweep" +
+                        sweepParam.charAt(0).toUpperCase() +
+                        sweepParam.slice(1),
+                    ),
+                  })
+                : t("newrun.btnRun")}
         </button>
-        <div className="config-note">
-          Runs execute one at a time — a new run queues behind any active one.
-        </div>
+        <div className="config-note">{t("newrun.runsSerial")}</div>
       </form>
     </div>
   );

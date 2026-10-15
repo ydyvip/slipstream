@@ -6,6 +6,7 @@ import {
   type Quality,
 } from "../api";
 import { formatInt } from "../lib/format";
+import { useT } from "../i18n";
 
 interface Props {
   onCreated: (id: string) => void;
@@ -13,18 +14,18 @@ interface Props {
 }
 
 const ROLE_LABELS: Record<MeshRole, string> = {
-  inlet: "inlet (wind comes in)",
-  outlet: "outlet",
-  model: "model (forces measured)",
-  slip: "tunnel wall (slip)",
-  wall: "wall (no-slip, e.g. floor)",
-  symmetry: "symmetry plane",
+  inlet: "mesh.roleInlet",
+  outlet: "mesh.roleOutlet",
+  model: "mesh.roleModel",
+  slip: "mesh.roleSlip",
+  wall: "mesh.roleWall",
+  symmetry: "mesh.roleSymmetry",
 };
 
-const ITERATIONS: Record<Quality, string> = {
-  coarse: "250 iterations",
-  medium: "500 iterations",
-  fine: "800 iterations",
+const ITERATIONS: Record<Quality, number> = {
+  coarse: 250,
+  medium: 500,
+  fine: 800,
 };
 
 /**
@@ -32,6 +33,7 @@ const ITERATIONS: Record<Quality, string> = {
  * patch list), assign a role to each patch, run.
  */
 export function MeshImportView({ onCreated, onBack }: Props) {
+  const t = useT();
   const [file, setFile] = useState<File | null>(null);
   const [unit, setUnit] = useState("m");
   const [inspecting, setInspecting] = useState(false);
@@ -71,14 +73,14 @@ export function MeshImportView({ onCreated, onBack }: Props) {
     if (!info) return;
     const ws = parseFloat(windSpeed);
     if (!Number.isFinite(ws) || ws <= 0 || ws >= 200) {
-      setError("Wind speed must be between 0 and 200 m/s");
+      setError(t("mesh.windSpeedError"));
       return;
     }
     let ref: number | undefined;
     if (refArea.trim() !== "") {
       ref = parseFloat(refArea);
       if (!Number.isFinite(ref) || ref <= 0) {
-        setError("Reference area must be a positive number (cm²)");
+        setError(t("mesh.refAreaError"));
         return;
       }
     }
@@ -95,7 +97,7 @@ export function MeshImportView({ onCreated, onBack }: Props) {
       });
       onCreated(id);
     } catch (err) {
-      setError(`Failed to start run: ${(err as Error).message}`);
+      setError(t("mesh.startFailed", { msg: (err as Error).message }));
       setSubmitting(false);
     }
   };
@@ -104,23 +106,18 @@ export function MeshImportView({ onCreated, onBack }: Props) {
     <div className="mesh-import">
       <header className="mesh-import-head">
         <button type="button" className="btn btn-ghost btn-sm" onClick={onBack}>
-          ← back to STL setup
+          {t("mesh.backToStlSetup")}
         </button>
-        <h1>Import a mesh</h1>
-        <p className="config-note">
-          Skip Slipstream's meshing and solve on your own volume mesh: a Gmsh
-          .msh (version 2 ASCII), an ASCII Fluent .msh or .cas, or a .zip of an
-          OpenFOAM constant/polyMesh folder. The wind blows along +X, so the
-          inlet must be at the low-x end.
-        </p>
+        <h1>{t("mesh.title")}</h1>
+        <p className="config-note">{t("mesh.importNote")}</p>
       </header>
 
       <section className="panel">
-        <div className="panel-head">1 · Mesh file</div>
+        <div className="panel-head">{t("mesh.stepMeshFile")}</div>
         <div className="mesh-import-body">
           <div className="mesh-import-row">
             <label className="field">
-              <span className="field-label">File</span>
+              <span className="field-label">{t("mesh.file")}</span>
               <input
                 type="file"
                 accept=".msh,.cas,.zip"
@@ -131,12 +128,12 @@ export function MeshImportView({ onCreated, onBack }: Props) {
               />
             </label>
             <label className="field">
-              <span className="field-label">Mesh units</span>
+              <span className="field-label">{t("mesh.meshUnits")}</span>
               <select value={unit} onChange={(e) => setUnit(e.target.value)}>
-                <option value="m">meters (m)</option>
-                <option value="mm">millimeters (mm)</option>
-                <option value="cm">centimeters (cm)</option>
-                <option value="in">inches (in)</option>
+                <option value="m">{t("mesh.unitMeters")}</option>
+                <option value="mm">{t("mesh.unitMillimeters")}</option>
+                <option value="cm">{t("mesh.unitCentimeters")}</option>
+                <option value="in">{t("mesh.unitInches")}</option>
               </select>
             </label>
           </div>
@@ -147,7 +144,7 @@ export function MeshImportView({ onCreated, onBack }: Props) {
               disabled={!file || inspecting}
               onClick={() => void inspect()}
             >
-              {inspecting ? "Converting and checking…" : "Inspect mesh"}
+              {inspecting ? t("mesh.converting") : t("mesh.inspect")}
             </button>
           </div>
         </div>
@@ -155,26 +152,29 @@ export function MeshImportView({ onCreated, onBack }: Props) {
 
       {info && (
         <section className="panel">
-          <div className="panel-head">2 · Patches</div>
+          <div className="panel-head">{t("mesh.stepPatches")}</div>
           <div className="mesh-import-body">
             <div className="mono config-note">
-              {info.format} · {formatInt(info.cells)} cells ·{" "}
+              {info.format} · {t("mesh.cells", { n: formatInt(info.cells) })} ·{" "}
               {info.mesh_ok
-                ? "checkMesh OK"
-                : `checkMesh reported ${info.failed_checks} failed check${
-                    info.failed_checks === 1 ? "" : "s"
-                  } (it may still solve)`}
+                ? t("mesh.checkMeshOk")
+                : info.failed_checks === 1
+                  ? t("mesh.checkMeshFailOne")
+                  : t("mesh.checkMeshFailMany", { n: info.failed_checks })}
               {info.bounds_m &&
-                ` · domain x ${info.bounds_m[0][0].toFixed(3)} to ${info.bounds_m[1][0].toFixed(3)} m`}
+                ` · ${t("mesh.domainX", {
+                  a: info.bounds_m[0][0].toFixed(3),
+                  b: info.bounds_m[1][0].toFixed(3),
+                })}`}
             </div>
             <div className="mesh-import-table">
               <table>
                 <thead>
                   <tr>
-                    <th>Patch</th>
-                    <th>Faces</th>
-                    <th>Center x (m)</th>
-                    <th>Role</th>
+                    <th>{t("mesh.colPatch")}</th>
+                    <th>{t("mesh.colFaces")}</th>
+                    <th>{t("mesh.colCenterX")}</th>
+                    <th>{t("mesh.colRole")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -187,7 +187,7 @@ export function MeshImportView({ onCreated, onBack }: Props) {
                       </td>
                       <td>
                         <select
-                          aria-label={`Role for ${p.name}`}
+                          aria-label={t("mesh.roleFor", { name: p.name })}
                           value={roles[p.name]}
                           onChange={(e) =>
                             setRoles((r) => ({ ...r, [p.name]: e.target.value as MeshRole }))
@@ -195,7 +195,7 @@ export function MeshImportView({ onCreated, onBack }: Props) {
                         >
                           {(Object.keys(ROLE_LABELS) as MeshRole[]).map((r) => (
                             <option key={r} value={r}>
-                              {ROLE_LABELS[r]}
+                              {t(ROLE_LABELS[r])}
                             </option>
                           ))}
                         </select>
@@ -207,7 +207,7 @@ export function MeshImportView({ onCreated, onBack }: Props) {
             </div>
             {missing.length > 0 && (
               <div className="form-error">
-                Give at least one patch each of these roles: {missing.join(", ")}
+                {t("mesh.missingRoles", { roles: missing.join(", ") })}
               </div>
             )}
           </div>
@@ -216,15 +216,15 @@ export function MeshImportView({ onCreated, onBack }: Props) {
 
       {info && (
         <section className="panel">
-          <div className="panel-head">3 · Conditions</div>
+          <div className="panel-head">{t("mesh.stepConditions")}</div>
           <div className="mesh-import-body">
             <div className="mesh-import-row">
               <label className="field">
-                <span className="field-label">Run name</span>
+                <span className="field-label">{t("mesh.runName")}</span>
                 <input value={name} onChange={(e) => setName(e.target.value)} />
               </label>
               <label className="field">
-                <span className="field-label">Wind speed (m/s)</span>
+                <span className="field-label">{t("mesh.windSpeed")}</span>
                 <input
                   type="number"
                   className="mono"
@@ -235,27 +235,27 @@ export function MeshImportView({ onCreated, onBack }: Props) {
                 />
               </label>
               <label className="field">
-                <span className="field-label">Solver budget</span>
+                <span className="field-label">{t("mesh.solverBudget")}</span>
                 <select
                   value={quality}
                   onChange={(e) => setQuality(e.target.value as Quality)}
                 >
                   {(Object.keys(ITERATIONS) as Quality[]).map((q) => (
                     <option key={q} value={q}>
-                      {ITERATIONS[q]}
+                      {t("mesh.iterations", { n: ITERATIONS[q] })}
                     </option>
                   ))}
                 </select>
               </label>
               <label className="field">
-                <span className="field-label">Reference area (cm²) — optional</span>
+                <span className="field-label">{t("mesh.refAreaOptional")}</span>
                 <input
                   type="number"
                   className="mono"
                   value={refArea}
                   min={0}
                   step="any"
-                  placeholder="auto (frontal area)"
+                  placeholder={t("mesh.refAreaAuto")}
                   onChange={(e) => setRefArea(e.target.value)}
                 />
               </label>
@@ -267,7 +267,7 @@ export function MeshImportView({ onCreated, onBack }: Props) {
                 disabled={submitting || missing.length > 0}
                 onClick={() => void run()}
               >
-                {submitting ? "Starting…" : "Run on this mesh"}
+                {submitting ? t("mesh.starting") : t("mesh.runOnMesh")}
               </button>
             </div>
           </div>

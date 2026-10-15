@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useT } from "../i18n";
 import { api, type History, type LogTail, type RunDetail } from "../api";
 import { usePoll } from "../hooks/usePoll";
 import { shortRunId } from "../lib/format";
@@ -40,6 +41,7 @@ export function RunDetailView({
   onRerun,
   onRenamed,
 }: Props) {
+  const t = useT();
   const fetchRun = useCallback(() => api.getRun(id), [id]);
   const [cancelling, setCancelling] = useState(false);
   const [resolving, setResolving] = useState(false);
@@ -62,7 +64,7 @@ export function RunDetailView({
     if (renaming === null) return;
     const name = renaming.trim();
     if (!name) {
-      setRenameError("Name can't be empty");
+      setRenameError(t("detail.renameEmptyError"));
       return;
     }
     try {
@@ -71,7 +73,7 @@ export function RunDetailView({
       setRenameError(null);
       onRenamed();
     } catch (err) {
-      setRenameError(`Rename failed: ${(err as Error).message}`);
+      setRenameError(t("detail.renameFailed", { message: (err as Error).message }));
     }
   };
 
@@ -138,7 +140,9 @@ export function RunDetailView({
   if (snapshot === null) {
     return (
       <div className="detail detail-loading">
-        {poll.error ? `Failed to load run: ${poll.error.message}` : "loading run…"}
+        {poll.error
+          ? t("detail.loadFailed", { message: poll.error.message })
+          : t("detail.loadingRun")}
       </div>
     );
   }
@@ -160,9 +164,9 @@ export function RunDetailView({
             <button
               className="btn btn-ghost btn-sm"
               onClick={() => setRenaming(run.name)}
-              title="Rename this run"
+              title={t("detail.renameTitle")}
             >
-              Rename
+              {t("detail.rename")}
             </button>
             <StatusPill status={run.status} />
           </div>
@@ -179,7 +183,7 @@ export function RunDetailView({
               value={renaming}
               maxLength={200}
               ref={renameInput}
-              aria-label="Run name"
+              aria-label={t("detail.runNameLabel")}
               onChange={(e) => setRenaming(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Escape") setRenaming(null);
@@ -190,25 +194,36 @@ export function RunDetailView({
               }}
             />
             <button type="submit" className="btn btn-primary btn-sm">
-              Save
+              {t("detail.save")}
             </button>
             <button
               type="button"
               className="btn btn-ghost btn-sm"
               onClick={() => setRenaming(null)}
             >
-              Cancel
+              {t("detail.cancel")}
             </button>
             {renameError && <span className="form-error">{renameError}</span>}
           </form>
         )}
         <div className="detail-meta mono">
-          <span title={`Run ID ${run.id}`}>#{shortRunId(run.id)}</span> ·{" "}
-          {run.config.wind_speed} m/s · yaw {run.config.yaw_deg}° · {run.config.quality}
-          {refinementLabel(run.config.refinement, run.refinement)}
+          <span title={t("detail.runId", { id: run.id })}>
+            #{shortRunId(run.id)}
+          </span>{" "}
+          · {t("detail.metaSpeed", { speed: run.config.wind_speed })} ·{" "}
+          {t("detail.metaYaw", { deg: run.config.yaw_deg })} · {run.config.quality}
+          {refinementLabel(run.config.refinement, run.refinement, t)}
           {run.config.mesh_import &&
-            ` · imported ${run.config.mesh_import.format === "polymesh_zip" ? "OpenFOAM" : run.config.mesh_import.format} mesh`}
-          {run.model && ` · ${run.model.triangles.toLocaleString("en-US")} tris`}
+            ` · ${t("detail.importedMesh", {
+              format:
+                run.config.mesh_import.format === "polymesh_zip"
+                  ? "OpenFOAM"
+                  : run.config.mesh_import.format,
+            })}`}
+          {run.model &&
+            ` · ${t("detail.tris", {
+              n: run.model.triangles.toLocaleString("en-US"),
+            })}`}
         </div>
         {layerTarget && (
           <div className="detail-meta mono">{layerTarget.summary}</div>
@@ -230,25 +245,25 @@ export function RunDetailView({
                 }
               }}
             >
-              {cancelling ? "Cancelling…" : "Cancel"}
+              {cancelling ? t("detail.cancelling") : t("detail.cancel")}
             </button>
           )}
           {terminal && (
             <button className="btn btn-sm" onClick={() => onRerun(id)}>
-              Re-run
+              {t("detail.rerun")}
             </button>
           )}
           {terminal && run.has_mesh && (
             <button
               className="btn btn-sm"
               onClick={() => setResolving((v) => !v)}
-              title="Solve again with a new wind speed or thrust, reusing this mesh"
+              title={t("detail.resolveTitle")}
             >
-              Re-solve…
+              {t("detail.resolve")}
             </button>
           )}
           <button className="btn btn-danger btn-sm" onClick={() => onDelete(id)}>
-            Delete
+            {t("detail.delete")}
           </button>
         </div>
       </header>
@@ -265,26 +280,25 @@ export function RunDetailView({
       )}
 
       {run.config.mesh_from && (
-        <div className="config-note">
-          Re-solved on the mesh from{" "}
-          <button className="btn btn-ghost btn-sm" onClick={() => onSelectRun(run.config.mesh_from!)}>
-            {run.config.resolve_base_name ?? "the original run"}
-          </button>
-        </div>
+          <div className="config-note">
+            {t("detail.resolvedOnMeshFrom")}{" "}
+            <button className="btn btn-ghost btn-sm" onClick={() => onSelectRun(run.config.mesh_from!)}>
+              {run.config.resolve_base_name ?? t("detail.originalRun")}
+            </button>
+          </div>
       )}
 
       {run.model?.watertight === false && (
-        <div className="warn-banner">
-          ⚠ This STL isn't watertight (open or non-manifold surface). It may mesh
-          poorly or fail — load it in New run and use <b>repair model</b> to rebuild
-          it as a closed solid, or fix it in your CAD.
-        </div>
+          <div className="warn-banner">
+            ⚠ {t("detail.notWatertight1")} <b>{t("detail.repairModel")}</b>{" "}
+            {t("detail.notWatertight2")}
+          </div>
       )}
 
       {(run.status === "error" || run.status === "cancelled") && (
         <div className={`error-banner${run.status === "cancelled" ? " cancel-banner" : ""}`}>
           <div className="error-title">
-            {run.status === "cancelled" ? "Run cancelled" : "Run failed"}
+            {run.status === "cancelled" ? t("detail.runCancelled") : t("detail.runFailed")}
           </div>
           {run.error && <div className="mono">{run.error}</div>}
         </div>
@@ -314,12 +328,12 @@ export function RunDetailView({
 
       {(hasHistory || hasResiduals) && (
         <section className="panel">
-          <div className="panel-head">Convergence</div>
+          <div className="panel-head">{t("detail.convergence")}</div>
           <div className="charts">
             {hasHistory && (
               <LineChart
-                title="Force coefficients"
-                xLabel="iteration"
+                title={t("detail.forceCoefficients")}
+                xLabel={t("detail.iteration")}
                 series={[
                   { name: "Cd", color: C_BLUE, x: history.iters, y: history.cd },
                   { name: "Cl", color: C_AQUA, x: history.iters, y: history.cl },
@@ -328,8 +342,8 @@ export function RunDetailView({
             )}
             {hasResiduals && (
               <LineChart
-                title="Residuals"
-                xLabel="iteration"
+                title={t("detail.residuals")}
+                xLabel={t("detail.iteration")}
                 yScale="log"
                 series={[
                   { name: "p", color: C_BLUE, x: history.residuals.iters, y: history.residuals.p },

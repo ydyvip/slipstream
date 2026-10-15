@@ -1,0 +1,15 @@
+export const sidebar: Record<string, string> = {
+  "sidebar.newRun": "+ New run",
+  "sidebar.comparePick2": "compare: pick a 2nd run",
+  "sidebar.compareTwo": "2 runs selected",
+  "sidebar.compare": "Compare",
+  "sidebar.clear": "clear",
+  "sidebar.loadingRuns": "loading runs…",
+  "sidebar.noRuns": "No runs yet.",
+  "sidebar.noRunsHint": "Drop an STL to get started.",
+  "sidebar.removeFromCompare": "Remove from comparison",
+  "sidebar.selectForCompare": "Select for comparison",
+  "sidebar.deleteRun": "Delete run",
+  "sidebar.runId": "Run ID {id}",
+  "sidebar.cd": "Cd",
+};
