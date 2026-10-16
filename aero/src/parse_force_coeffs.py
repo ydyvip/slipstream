@@ -62,7 +62,11 @@ def resolve_columns(
     table = DEFAULT_FIELD_COLUMNS.copy()
     if field_columns:
         for field, cols in field_columns.items():
-            table.setdefault(field, []).extend(cols or [])
+            # explicit config is authoritative: it replaces the defaults for
+            # that field entirely; an empty list disables the field (absent
+            # -> treated as "not available", matching v2512 which has no
+            # pressure/viscous columns in forceCoeffs).
+            table[field] = list(cols or [])
 
     # pressure/viscous split fields may legitimately share a column with their
     # base total field when the file has no '(f)' columns (older OpenFOAM):

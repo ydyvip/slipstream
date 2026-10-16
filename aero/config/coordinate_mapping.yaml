@@ -30,8 +30,16 @@ sign:
 moment_reference: "cg"
 
 # Mapping from database fields to OpenFOAM forceCoeffs column names (header
-# tokens, matched case-insensitively, '(' always excluded so "(f)" final
-# components never collide with totals).
+# tokens, matched case-insensitively; config is authoritative, defaults in
+# parse_force_coeffs are only a fallback).
+#
+# OpenFOAM v2512 writes:
+#   Cd Cd(f) Cd(r) Cl Cl(f) Cl(r) CmPitch CmRoll CmYaw Cs Cs(f) Cs(r)
+# where the PLAIN columns are the pressure+viscous TOTAL and the (f)/(r)
+# columns are front/rear halves (0.5*C {+,-} Cm) used only for the
+# aerodynamic-center sanity checks - NOT pressure/viscous splits.
+# (Older OpenFOAM, e.g. v1912, wrote plain = pressure and (f) = full, which
+# is why the defaults in parse_force_coeffs prefer the (f) columns.)
 force_coeffs_columns:
   CD:        ["Cd", "CD"]
   CY:        ["CY", "Cs"]
@@ -39,9 +47,12 @@ force_coeffs_columns:
   Cl_roll:   ["Cl_roll", "CmRoll"]
   Cm_pitch:  ["Cm_pitch", "CmPitch"]
   Cn_yaw:    ["Cn_yaw", "CmYaw"]
-  CD_pressure:  ["Cd(f)"]
-  CL_pressure:  ["Cl(f)"]
-  Cm_pressure:  ["CmPitch(f)"]
+  # v2512 no longer reports pressure/viscous splits in forceCoeffs - the
+  # breakdown lives in the forces FO output. Keep these disabled so the
+  # split columns stay NaN rather than aliasing the front/rear columns:
+  CD_pressure:  []
+  CL_pressure:  []
+  Cm_pressure:  []
   CD_viscous:   ["Cd(v)"]
   CL_viscous:   ["Cl(v)"]
 

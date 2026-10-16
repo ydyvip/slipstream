@@ -63,7 +63,8 @@ def parse_all_cases(root: Path, configs: dict[str, dict], cases: list[dict]) -> 
         cid = case["id"]
         fc_file = root / "raw" / "forceCoeffs" / cid / "coefficient.dat"
         f_file = root / "raw" / "forces" / cid / "forces.dat"
-        fc = parse_force_coeffs(fc_file)
+        fc = parse_force_coeffs(
+            fc_file, field_columns=configs["mapping"].get("force_coeffs_columns"))
         forces = parse_forces(f_file, layout=layout, prefix="")
         out.append({
             "case": case,

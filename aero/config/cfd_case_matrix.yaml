@@ -9,8 +9,8 @@
 #
 # Per-case reference/conditions override the defaults in aircraft_geometry.yaml.
 
-geometry_revision: "ch3-v1"
-foam_version: "2306"
+geometry_revision: "ch3-stl-v1"
+foam_version: "2512"
 solver: "simpleFoam"
 turbulence_model: "kOmegaSST"
 converged: true
@@ -21,9 +21,14 @@ conditions:
   mu_Pas: 1.8e-05     # dynamic viscosity (Pa·s)
 
 reference:
-  S_ref_m2: 0.200
-  b_ref_m: 0.800
-  cbar_ref_m: 0.250
+  # Real CH-3 (Rainbow-3) wing planform from assets/ch-3 build_ch3.py:
+  # span 8.00 m, root chord 1.10 m, tip 0.55 m -> S = 8.0*(1.1+0.55)/2,
+  # MAC for taper 0.5.
+  S_ref_m2: 6.6
+  b_ref_m: 8.0
+  cbar_ref_m: 0.856
+  # CofR used by the backend controlDict: prepare_stl centers the STL bbox at
+  # the origin, so forces are integrated about (0,0,0).
   moment_ref_x_m: 0.0
   moment_ref_y_m: 0.0
   moment_ref_z_m: 0.0

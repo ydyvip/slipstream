@@ -76,7 +76,7 @@ def test_normalized_moment_is_shifted_to_cg(pipeline):
         assert float(n["My_Nm"]) == pytest.approx(m_cg[1], abs=1e-9)
         assert float(n["Mz_Nm"]) == pytest.approx(m_cg[2], abs=1e-9)
         # moment was actually shifted off the CofR => recorded ref point != origin
-        assert cg_x > 0.0
+        assert cg_x != 0.0
         assert float(n["moment_ref_y_m"]) == 0.0
         assert float(n["moment_ref_z_m"]) == 0.0
 

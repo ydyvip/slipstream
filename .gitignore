@@ -18,3 +18,6 @@ examples/validation/*.stl
 # Agent tool state / caches
 .omo/
 .pytest_cache/
+
+# Real-case CFD driver workspace (heavy OpenFOAM cases; results are copied into aero/raw/)
+aero/runs/

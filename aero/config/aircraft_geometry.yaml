@@ -1,34 +1,43 @@
 # Aircraft / airframe reference geometry for the aero database (SI).
 # This is the single source of truth for dimensional reference quantities.
-# Values below are the CH-3 entry (sample placeholder — replace with the real
-# measured geometry before trusting any released model).
+#
+# CH-3 (Rainbow-3) real geometry, derived from assets/ch-3 (build_ch3.py,
+# "approximate exterior model"). Wing: trapezoid, span 8.00 m, root chord
+# 1.10 m, tip chord 0.55 m (taper 0.5), planform S_ref = 8.0*(1.1+0.55)/2.
 name: CH-3
-geometry_revision: "ch3-v1"
+geometry_revision: "ch3-stl-v1"
 
 reference:
   # Wing planform reference area, S_ref (m^2)  [forceCoeffs Aref]
-  S_ref_m2: 0.200
+  S_ref_m2: 6.6
   # Wing span, b_ref (m)                       [JSBSim metrics bw]
-  b_ref_m: 0.800
+  b_ref_m: 8.0
   # Mean aerodynamic chord / reference chord (m)
-  cbar_ref_m: 0.250
-  # Point about which the CFD force/moment was integrated (CofR in controlDict, m)
+  cbar_ref_m: 0.856
+  # Point about which the CFD force/moment was integrated (CofR in controlDict, m).
+  # geometry.prepare_stl centers the STL bbox at the origin, so the CofR is (0,0,0).
   moment_ref_x_m: 0.0
   moment_ref_y_m: 0.0
   moment_ref_z_m: 0.0
 
-center_of_gravity_m: [0.058, 0.0, 0.0]
+# ESTIMATE, not measured: no mass/CG data exists in-repo. Set to the wing's
+# 25% MAC point in the prepared (bbox-centered) frame: STL-frame quarter-chord
+# x = 1500 + 0.25*855.6 = 1713.9 mm, bbox center x = 3100 mm ->
+# -1386 mm. z kept at the centerline (wing is at +330 mm STL frame; bbox z
+# center ~ +304 mm -> ~ +26 mm; 0 is a fine estimate). Replace with the real
+# measured CG before using the model for flight simulation.
+center_of_gravity_m: [-1.386, 0.0, 0.0]
 
 # JSBSim metric sizing (feet) — generated, but kept here for inspection.
 jsbsim:
-  Sw_sqft: 2.15278   # S_ref_m2 / 0.09290304
-  bw_ft: 2.62467     # b_ref_m / 0.3048
-  cbarw_ft: 0.82021  # cbar_ref_m / 0.3048
+  Sw_sqft: 71.0418   # S_ref_m2 / 0.09290304
+  bw_ft: 26.2467     # b_ref_m / 0.3048
+  cbarw_ft: 2.8084   # cbar_ref_m / 0.3048
 
 envelope:
   # Envelope the model is expected to remain valid inside (deg). Tables whose
   # breakpoints do not cover this envelope produce coverage warnings.
-  alpha_min_deg: -1.0
-  alpha_max_deg: 15.0
+  alpha_min_deg: -4.0
+  alpha_max_deg: 16.0
   beta_min_deg: -10.0
   beta_max_deg: 10.0

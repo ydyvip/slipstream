@@ -31,9 +31,7 @@
         <table>
           <independentVar lookup="row">{{ b.indep_prop }}</independentVar>
           <tableData>
-{%- for x, c in b.break_points %}
-            {{ x }}  {{ c }}
-{%- endfor %}
+{{ b.table_rows }}
           </tableData>
         </table>
       </product>

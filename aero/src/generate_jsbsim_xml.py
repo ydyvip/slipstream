@@ -94,6 +94,13 @@ def generate_xml(
         prop_name = prop[ind_var] if ind_var in prop else None
         x_rad = tab["x_rad"]
         c = tab["c"]
+        # JSBSim's handler for a `lookup="row"` 1D table reads rows (2 columns
+        # each) separated by newlines.  Building the rows here (rather than a
+        # Jinja for-loop, whose whitespace control collapses them onto one
+        # line) keeps the emitted table valid for JSBSim's parser.
+        break_rows = "\n".join(
+            f"{_fmt(v)}  {_fmt(w)}" for v, w in zip(x_rad, c)
+        )
         # geometry factor properties: qbar-psf always first, then Sw, bw, cbar
         factor_props = ["aero/qbar-psf"]
         for f in conf.get("factors", []):
@@ -112,7 +119,7 @@ def generate_xml(
             "indep_rad_or_deg": "rad",
             "num_points": len(x_rad),
             "cases": tab.get("cases", []),
-            "break_points": list(zip([_fmt(v) for v in x_rad], [_fmt(v) for v in c])),
+            "table_rows": break_rows,
             "factors": factor_props,
         })
 

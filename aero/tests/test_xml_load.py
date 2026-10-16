@@ -133,26 +133,94 @@ def test_envelope_coverage_from_geometry(xml_text, configs):
         xs = _table_data(_axis_table(axis))[0::2]  # radians
         var = EXPECTED_AXES[name][1]
         if var == "alpha":
-            lo, hi = geom["alpha_min_deg"], geom["alpha_max_deg"]
+            lo, hi = math.radians(geom["alpha_min_deg"]), math.radians(geom["alpha_max_deg"])
         else:
-            lo, hi = geom["beta_min_deg"], geom["beta_max_deg"]
-        assert math.degrees(xs[0]) <= lo + 1e-9, f"{name}: covers min {var}"
-        assert math.degrees(xs[-1]) >= hi - 1e-9, f"{name}: covers max {var}"
+            lo, hi = math.radians(geom["beta_min_deg"]), math.radians(geom["beta_max_deg"])
+        # 6-decimal radian serialization in the XML adds up to ~1e-6 rad of
+        # roundtrip error, so the coverage check uses that tolerance (same as
+        # test_table_breakpoints_monotonic_and_cover_matrix).
+        assert xs[0] <= lo + 1e-6, f"{name}: covers min {var}"
+        assert xs[-1] >= hi - 1e-6, f"{name}: covers max {var}"
 
 
-def test_jsbsim_load_roundtrip_when_available(xml_text, tmp_path):
-    """If the real JSBSim python package is present, load the generated file
-    through its ElementLoader to confirm it parses (skipped when not
-    installed)."""
+_MINIMAL_FDM = """<?xml version="1.0"?>
+<fdm_config name="{name}" version="2.0">
+  <fileheader><author>slipstream</author><filecreationdate>2026</filecreationdate>
+    <version>1.0</version><description>slipstream aero load test</description></fileheader>
+  <metrics>
+    <wingarea unit="FT2"> {sw} </wingarea>
+    <wingspan unit="FT"> {bw} </wingspan>
+    <chord unit="FT"> {cbar} </chord>
+    <htailarea unit="FT2"> 0 </htailarea>
+    <htailarm unit="FT"> 0 </htailarm>
+    <vtailarea unit="FT2"> 0 </vtailarea>
+    <vtailarm unit="FT"> 0 </vtailarm>
+    <location name="AERORP" unit="IN"><x>0</x><y>0</y><z>0</z></location>
+    <location name="EYEPOINT" unit="IN"><x>0</x><y>0</y><z>0</z></location>
+    <location name="VRP" unit="IN"><x>0</x><y>0</y><z>0</z></location>
+  </metrics>
+  <mass_balance>
+    <ixx unit="SLUG*FT2"> 100 </ixx>
+    <iyy unit="SLUG*FT2"> 100 </iyy>
+    <izz unit="SLUG*FT2"> 100 </izz>
+    <ixz unit="SLUG*FT2"> 0 </ixz>
+    <emptywt unit="LBS"> 50 </emptywt>
+    <location name="CG" unit="IN"><x>0</x><y>0</y><z>0</z></location>
+  </mass_balance>
+  <aerodynamics file="aerodynamics.xml"/>
+  <ground_reactions>
+    <contact type="STRUCTURE" name="STRUCTURE">
+      <location unit="IN"><x>0</x><y>0</y><z>0</z></location>
+    </contact>
+  </ground_reactions>
+  <system file="ch3_systems"/>
+</fdm_config>
+"""
+
+
+def test_jsbsim_load_roundtrip_when_available(xml_text, tmp_path, configs):
+    """If the real JSBSim python package is present, make JSBSim parse the
+    generated file (skipped when not installed).
+
+    The API changed across versions: pre-1.3 exposed a standalone
+    ``ElementLoader``; 1.3+ removed it in favor of loading a (minimal) model
+    whose ``<aerodynamics file=...>`` includes the generated file.  We try the
+    element loader first and fall back to loading a minimal aircraft wrapper.
+    """
     jsbsim = pytest.importorskip("jsbsim", reason="python jsbsim not installed")
 
     f = tmp_path / "aerodynamics.xml"
     f.write_text(xml_text, encoding="utf-8")
 
-    loader = jsbsim.ElementLoader()
-    loader.LoadElement(str(f))
-    el = loader.GetElement()
-    assert el.GetName().lower() == "aerodynamics"
-    # report the element name, not the raw path, so the assertion is
-    # meaningful about the parsed content
-    assert el.findnext("axis") is not None or el.Find("axis") is not None
+    # --- old API: standalone ElementLoader --------------------------------
+    if hasattr(jsbsim, "ElementLoader"):
+        loader = jsbsim.ElementLoader()
+        loader.LoadElement(str(f))
+        el = loader.GetElement()
+        assert el.GetName().lower() == "aerodynamics"
+        assert el.findnext("axis") is not None or el.Find("axis") is not None
+        return
+
+    # --- new API: load a minimal aircraft model that includes the file -----
+    geom = configs["geometry"]
+    ref = geom["reference"]
+    sw = ref["S_ref_m2"] / 0.09290304
+    bw = ref["b_ref_m"] / 0.3048
+    cbar = ref["cbar_ref_m"] / 0.3048
+    aircraft_dir = tmp_path / "aircraft" / "ch3"
+    aircraft_dir.mkdir(parents=True)
+    (aircraft_dir / "ch3.xml").write_text(
+        _MINIMAL_FDM.format(name="CH3", sw=round(sw, 4), bw=round(bw, 4),
+                            cbar=round(cbar, 4)),
+        encoding="utf-8",
+    )
+    (aircraft_dir / "aerodynamics.xml").write_text(xml_text, encoding="utf-8")
+    (aircraft_dir / "ch3_systems.xml").write_text(
+        '<?xml version="1.0"?>\n<system name="CH3"></system>\n', encoding="utf-8"
+    )
+
+    fdm = jsbsim.FGFDMExec(jsbsim.get_default_root_dir())
+    fdm.set_aircraft_path(str(tmp_path / "aircraft"))
+    assert fdm.load_model("ch3"), "JSBSim failed to load generated aerodynamics.xml"
+    assert bool(fdm.get_aerodynamics())
+    assert fdm.get_model_name() == "ch3"
