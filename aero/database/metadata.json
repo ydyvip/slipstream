@@ -1,0 +1,21 @@
+{
+  "generated": "2026-10-16T08:59:27+00:00",
+  "geometry_revision": "ch3-v1",
+  "foam_version": "2306",
+  "solver": "simpleFoam",
+  "turbulence_model": "kOmegaSST",
+  "case_count": 10,
+  "cases": [
+    "ch3_a-04_b00",
+    "ch3_a00_b00",
+    "ch3_a04_b00",
+    "ch3_a08_b00",
+    "ch3_a12_b00",
+    "ch3_a16_b00",
+    "ch3_a00_bm10",
+    "ch3_a00_bm05",
+    "ch3_a00_b05",
+    "ch3_a00_b10"
+  ],
+  "moment_reference": "cg"
+}

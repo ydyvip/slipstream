@@ -1,0 +1,34 @@
+# Aircraft / airframe reference geometry for the aero database (SI).
+# This is the single source of truth for dimensional reference quantities.
+# Values below are the CH-3 entry (sample placeholder — replace with the real
+# measured geometry before trusting any released model).
+name: CH-3
+geometry_revision: "ch3-v1"
+
+reference:
+  # Wing planform reference area, S_ref (m^2)  [forceCoeffs Aref]
+  S_ref_m2: 0.200
+  # Wing span, b_ref (m)                       [JSBSim metrics bw]
+  b_ref_m: 0.800
+  # Mean aerodynamic chord / reference chord (m)
+  cbar_ref_m: 0.250
+  # Point about which the CFD force/moment was integrated (CofR in controlDict, m)
+  moment_ref_x_m: 0.0
+  moment_ref_y_m: 0.0
+  moment_ref_z_m: 0.0
+
+center_of_gravity_m: [0.058, 0.0, 0.0]
+
+# JSBSim metric sizing (feet) — generated, but kept here for inspection.
+jsbsim:
+  Sw_sqft: 2.15278   # S_ref_m2 / 0.09290304
+  bw_ft: 2.62467     # b_ref_m / 0.3048
+  cbarw_ft: 0.82021  # cbar_ref_m / 0.3048
+
+envelope:
+  # Envelope the model is expected to remain valid inside (deg). Tables whose
+  # breakpoints do not cover this envelope produce coverage warnings.
+  alpha_min_deg: -1.0
+  alpha_max_deg: 15.0
+  beta_min_deg: -10.0
+  beta_max_deg: 10.0

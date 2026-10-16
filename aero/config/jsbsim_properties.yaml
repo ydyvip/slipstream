@@ -1,0 +1,54 @@
+# JSBSim aerodynamics function layout — drives generate_jsbsim_xml.py.
+#
+# Each axis emits one <axis> function that directly produces a force (lbf) or
+# moment (lbf·ft):
+#     axis_value = coeff_table(var) * qbar * Sw_ft2   (forces)
+#     axis_value = coeff_table(var) * qbar * Sw_ft2 * len_ft   (moments)
+# The coefficient table is pure (dimensionless), so the same table is never
+# multiplied by q*S more than once — normalized coefficients already include
+# the qbar·S_ref/DOWNSCALING performed by normalize_coefficients.py.
+
+property_map:
+  qbar:  "aero/qbar-psf"
+  Sw:    "metrics/Sw-sqft"
+  bw:    "metrics/bw-ft"
+  cbar:  "metrics/cbarw-ft"
+  alpha: "aero/alpha-rad"
+  beta:  "aero/beta-rad"
+
+# Output axes, in emission order. factors = geometry properties multiplied with
+# qbar (SI->Imperial handled by generate_jsbsim_xml.py via unit conversion).
+axes:
+  DRAG:
+    independent_var: "alpha"
+    factors: ["qbar", "Sw"]
+    output_units: "lbf"
+  SIDE:
+    independent_var: "beta"
+    factors: ["qbar", "Sw"]
+    output_units: "lbf"
+  LIFT:
+    independent_var: "alpha"
+    factors: ["qbar", "Sw"]
+    output_units: "lbf"
+  PITCH:
+    independent_var: "alpha"
+    factors: ["qbar", "Sw", "cbar"]
+    output_units: "lbf-ft"
+  YAW:
+    independent_var: "beta"
+    factors: ["qbar", "Sw", "bw"]
+    output_units: "lbf-ft"
+  ROLL:
+    independent_var: "beta"
+    factors: ["qbar", "Sw", "bw"]
+    output_units: "lbf-ft"
+
+# Which aero-table axis feeds which JSBSim <axis> block.
+table_to_axis:
+  CL: "LIFT"
+  CD: "DRAG"
+  CY: "SIDE"
+  Cm_pitch: "PITCH"
+  Cn_yaw: "YAW"
+  Cl_roll: "ROLL"

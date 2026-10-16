@@ -14,3 +14,7 @@ frontend/public/__test_*
 
 # Generated validation models (examples/validation/make_models.py)
 examples/validation/*.stl
+
+# Agent tool state / caches
+.omo/
+.pytest_cache/

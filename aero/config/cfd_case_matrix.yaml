@@ -1,0 +1,43 @@
+# CFD case matrix — one entry per converged OpenFOAM run feeding the aero DB.
+# `id` must match the raw/forceCoeffs/<id>/coefficient.dat (and optional
+# raw/forces/<id>/force.dat + moment.dat) folder names.
+#
+# Conventions here are the aerodynamic reference frame:
+#   alpha_deg : XZ-plane angle of attack, nose up positive
+#   beta_deg  : side-slip, positive = flow from port (right-handed about -Z aero)
+#   delta_*   : control deflections (deg)
+#
+# Per-case reference/conditions override the defaults in aircraft_geometry.yaml.
+
+geometry_revision: "ch3-v1"
+foam_version: "2306"
+solver: "simpleFoam"
+turbulence_model: "kOmegaSST"
+converged: true
+
+conditions:
+  V_inf_mps: 15.0     # freestream speed (m/s)
+  rho_kgm3: 1.225     # reference density (kg/m3)
+  mu_Pas: 1.8e-05     # dynamic viscosity (Pa·s)
+
+reference:
+  S_ref_m2: 0.200
+  b_ref_m: 0.800
+  cbar_ref_m: 0.250
+  moment_ref_x_m: 0.0
+  moment_ref_y_m: 0.0
+  moment_ref_z_m: 0.0
+
+# AoA alpha sweep (delta_e=0) -> LIFT/DRAG/PITCH tables
+cases:
+  - {id: "ch3_a-04_b00", alpha_deg: -4.0}
+  - {id: "ch3_a00_b00",  alpha_deg: 0.0}
+  - {id: "ch3_a04_b00",  alpha_deg: 4.0}
+  - {id: "ch3_a08_b00",  alpha_deg: 8.0}
+  - {id: "ch3_a12_b00",  alpha_deg: 12.0}
+  - {id: "ch3_a16_b00",  alpha_deg: 16.0}
+  # Beta sweep (alpha=0) -> SIDE/ROLL/YAW tables
+  - {id: "ch3_a00_bm10", alpha_deg: 0.0, beta_deg: -10.0}
+  - {id: "ch3_a00_bm05", alpha_deg: 0.0, beta_deg: -5.0}
+  - {id: "ch3_a00_b05",  alpha_deg: 0.0, beta_deg: 5.0}
+  - {id: "ch3_a00_b10",  alpha_deg: 0.0, beta_deg: 10.0}

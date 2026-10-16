@@ -1,0 +1,55 @@
+# Coordinate frames, axis/sign conventions and OpenFOAM column mappings.
+#
+# CFD frame (what the solver reports): x aft-stream, y right, z up —
+# matches the slipstream foam template (dragDir (1 0 0), liftDir (0 0 1)).
+#
+# Aero frame (database + JSBSim axes): x along freestream, y right,
+# z up (perpendicular to freestream in the plane of symmetry).
+
+cfd_frame: {x: "aft-stream", y: "right", z: "up"}
+aero_frame: {x: "stream", y: "right", z: "up"}
+
+# Rotation matrix: vector_aero = rotation * vector_cfd  (SI coordinates in m).
+rotation: [[1.0, 0.0, 0.0],
+           [0.0, 1.0, 0.0],
+           [0.0, 0.0, 1.0]]
+
+# Sign convention applied to each database coefficient (+1 keeps the JSBSim
+# positive sense — CD aft, CL up, Cm pitch-up, etc.), see README.
+sign:
+  CD: 1
+  CY: 1
+  CL: 1
+  Cl_roll: 1
+  Cm_pitch: 1
+  Cn_yaw: 1
+
+# Point about which the database coefficients are expressed.
+#   "cg"   -> CofR moments are shifted to the CG before normalization
+#   "cofr" -> keep the CFD moment reference point
+moment_reference: "cg"
+
+# Mapping from database fields to OpenFOAM forceCoeffs column names (header
+# tokens, matched case-insensitively, '(' always excluded so "(f)" final
+# components never collide with totals).
+force_coeffs_columns:
+  CD:        ["Cd", "CD"]
+  CY:        ["CY", "Cs"]
+  CL:        ["Cl"]
+  Cl_roll:   ["Cl_roll", "CmRoll"]
+  Cm_pitch:  ["Cm_pitch", "CmPitch"]
+  Cn_yaw:    ["Cn_yaw", "CmYaw"]
+  CD_pressure:  ["Cd(f)"]
+  CL_pressure:  ["Cl(f)"]
+  Cm_pressure:  ["CmPitch(f)"]
+  CD_viscous:   ["Cd(v)"]
+  CL_viscous:   ["Cl(v)"]
+
+# OpenFOAM forces FO output: each vector group position in a row.
+# row = [time, F_pressure(xyz), F_viscous(xyz), M_pressure(xyz), M_viscous(xyz)]
+forces_row_layout:
+  vectors_per_row: 4
+  pressure_first_force: 0   # index of the pressure force vector group
+  viscous_force: 1          # index of the viscous force vector group
+  pressure_moment: 2        # index of the pressure moment vector group
+  viscous_moment: 3         # index of the viscous moment vector group
