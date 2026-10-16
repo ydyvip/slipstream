@@ -16,115 +16,143 @@
         coordinate_mapping.yaml.  Audit signs against the physical airframe
         before releasing a model to JSBSim.
 -->
-<aerodynamics>  <axis name="DRAG">
+<aerodynamics>
+  <axis name="DRAG">
     <description>along drag (aft): C_drag table from OpenFOAM CFD
       (CD), independent variable aero/alpha-rad (rad),
       6 breakpoints.</description>
     <function name="aero/coefficient/CD">
       <description>CD * qbar * Sw</description>
-      <product>        <property>aero/qbar-psf</property>        <property>metrics/Sw-sqft</property>        <table>
+      <product>
+        <property>aero/qbar-psf</property>
+        <property>metrics/Sw-sqft</property>
+        <table>
           <independentVar lookup="row">aero/alpha-rad</independentVar>
           <tableData>
--0.069813  0.116675
-0.000000  0.101363
-0.069813  0.110919
-0.139626  0.162891
-0.209440  0.218993
-0.279253  0.305476
+            -0.069813 0.116675
+            0.000000 0.101363
+            0.069813 0.110919
+            0.139626 0.162891
+            0.209440 0.218993
+            0.279253 0.305476
           </tableData>
         </table>
       </product>
     </function>
-  </axis>  <axis name="SIDE">
+  </axis>
+  <axis name="SIDE">
     <description>yaw (right): C_sideforce table from OpenFOAM CFD
       (CY), independent variable aero/beta-rad (rad),
       5 breakpoints.</description>
     <function name="aero/coefficient/CY">
       <description>CY * qbar * Sw</description>
-      <product>        <property>aero/qbar-psf</property>        <property>metrics/Sw-sqft</property>        <table>
+      <product>
+        <property>aero/qbar-psf</property>
+        <property>metrics/Sw-sqft</property>
+        <table>
           <independentVar lookup="row">aero/beta-rad</independentVar>
           <tableData>
--0.174533  -0.078213
--0.087266  -0.045494
-0.000000  0.006202
-0.087266  0.046360
-0.174533  0.085548
+            -0.174533 -0.078213
+            -0.087266 -0.045494
+            0.000000 0.006202
+            0.087266 0.046360
+            0.174533 0.085548
           </tableData>
         </table>
       </product>
     </function>
-  </axis>  <axis name="LIFT">
+  </axis>
+  <axis name="LIFT">
     <description>lift (up): C_lift table from OpenFOAM CFD
       (CL), independent variable aero/alpha-rad (rad),
       6 breakpoints.</description>
     <function name="aero/coefficient/CL">
       <description>CL * qbar * Sw</description>
-      <product>        <property>aero/qbar-psf</property>        <property>metrics/Sw-sqft</property>        <table>
+      <product>
+        <property>aero/qbar-psf</property>
+        <property>metrics/Sw-sqft</property>
+        <table>
           <independentVar lookup="row">aero/alpha-rad</independentVar>
           <tableData>
--0.069813  -0.338958
-0.000000  0.061578
-0.069813  0.357456
-0.139626  0.801967
-0.209440  0.558854
-0.279253  0.662190
+            -0.069813 -0.338958
+            0.000000 0.061578
+            0.069813 0.357456
+            0.139626 0.801967
+            0.209440 0.558854
+            0.279253 0.662190
           </tableData>
         </table>
       </product>
     </function>
-  </axis>  <axis name="PITCH">
+  </axis>
+  <axis name="PITCH">
     <description>pitch moment (nose-up): C_pitch table from OpenFOAM CFD
       (Cm_pitch), independent variable aero/alpha-rad (rad),
       6 breakpoints.</description>
     <function name="aero/coefficient/Cm_pitch">
       <description>Cm_pitch * qbar * Sw</description>
-      <product>        <property>aero/qbar-psf</property>        <property>metrics/Sw-sqft</property>        <property>metrics/cbarw-ft</property>        <table>
+      <product>
+        <property>aero/qbar-psf</property>
+        <property>metrics/Sw-sqft</property>
+        <property>metrics/cbarw-ft</property>
+        <table>
           <independentVar lookup="row">aero/alpha-rad</independentVar>
           <tableData>
--0.069813  0.607251
-0.000000  0.408945
-0.069813  0.557734
-0.139626  -0.736622
-0.209440  0.156627
-0.279253  -0.098788
+            -0.069813 0.607251
+            0.000000 0.408945
+            0.069813 0.557734
+            0.139626 -0.736622
+            0.209440 0.156627
+            0.279253 -0.098788
           </tableData>
         </table>
       </product>
     </function>
-  </axis>  <axis name="YAW">
+  </axis>
+  <axis name="YAW">
     <description>yaw moment (nose-right): C_yaw table from OpenFOAM CFD
       (Cn_yaw), independent variable aero/beta-rad (rad),
       5 breakpoints.</description>
     <function name="aero/coefficient/Cn_yaw">
       <description>Cn_yaw * qbar * Sw</description>
-      <product>        <property>aero/qbar-psf</property>        <property>metrics/Sw-sqft</property>        <property>metrics/bw-ft</property>        <table>
+      <product>
+        <property>aero/qbar-psf</property>
+        <property>metrics/Sw-sqft</property>
+        <property>metrics/bw-ft</property>
+        <table>
           <independentVar lookup="row">aero/beta-rad</independentVar>
           <tableData>
--0.174533  -0.028465
--0.087266  -0.015491
-0.000000  0.002693
-0.087266  0.015149
-0.174533  0.028867
+            -0.174533 -0.028465
+            -0.087266 -0.015491
+            0.000000 0.002693
+            0.087266 0.015149
+            0.174533 0.028867
           </tableData>
         </table>
       </product>
     </function>
-  </axis>  <axis name="ROLL">
+  </axis>
+  <axis name="ROLL">
     <description>roll moment (right-wing-down): C_roll table from OpenFOAM CFD
       (Cl_roll), independent variable aero/beta-rad (rad),
       5 breakpoints.</description>
     <function name="aero/coefficient/Cl_roll">
       <description>Cl_roll * qbar * Sw</description>
-      <product>        <property>aero/qbar-psf</property>        <property>metrics/Sw-sqft</property>        <property>metrics/bw-ft</property>        <table>
+      <product>
+        <property>aero/qbar-psf</property>
+        <property>metrics/Sw-sqft</property>
+        <property>metrics/bw-ft</property>
+        <table>
           <independentVar lookup="row">aero/beta-rad</independentVar>
           <tableData>
--0.174533  0.001827
--0.087266  0.001100
-0.000000  0.001378
-0.087266  0.005388
-0.174533  0.005696
+            -0.174533 0.001827
+            -0.087266 0.001100
+            0.000000 0.001378
+            0.087266 0.005388
+            0.174533 0.005696
           </tableData>
         </table>
       </product>
     </function>
-  </axis></aerodynamics>
+  </axis>
+</aerodynamics>
