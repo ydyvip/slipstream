@@ -79,6 +79,9 @@ cd aero && python -m pytest -q tests
   用 `"cofr"` 则保留 CFD 积分参考点。`test_moment_reference.py` 用交叉叉积验证平移。
 - **源优先级**：有 `forces` 输出时，系数由**有量纲力/力矩**推导（权威路径）；
   否则回退 `forceCoeffs` 列（`coefficient_source` 列记录来源）。
+- **可复现**：在相同输入下生成产物逐字节一致（plan §8 验收项）。默认时间戳取
+  wall-clock；设环境变量 `SOURCE_DATE_EPOCH`（unix 秒或 ISO-8601）可固定生成
+  时间戳实现完全确定性复现（`test_reproducibility.py` 验证）。
 
 ## 配置说明
 

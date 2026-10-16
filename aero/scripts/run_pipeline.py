@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -31,6 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent   # aero/
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from src._clock import generated_utc  # noqa: E402
 from src.compare_jsbsim_cfd import compare  # noqa: E402
 from src.fit_aero_tables import build_tables, write_tables  # noqa: E402
 from src.generate_jsbsim_xml import generate_xml  # noqa: E402
@@ -181,7 +181,7 @@ def _metadata(configs: dict[str, dict], cases: list[dict]) -> str:
     import json
 
     return json.dumps({
-        "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "generated": generated_utc(),
         "geometry_revision": configs["matrix"].get("geometry_revision", ""),
         "foam_version": configs["matrix"].get("foam_version", ""),
         "solver": configs["matrix"].get("solver", ""),

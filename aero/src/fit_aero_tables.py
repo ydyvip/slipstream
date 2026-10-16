@@ -31,13 +31,13 @@ from __future__ import annotations
 import json
 import math
 from collections import OrderedDict
-from datetime import datetime, timezone
 from typing import Mapping, Sequence
 
 import numpy as np
 from scipy import interpolate
 
 # table variable -> the coefficient dimension this axis is scaled by (# plan §6.4)
+from ._clock import generated_utc
 from .normalize_coefficients import COEFF_DIMENSION
 
 
@@ -140,7 +140,7 @@ def build_tables(
                           "warnings": warn}
 
     return {
-        "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "generated": generated_utc(),
         "source": "aero_normalized.csv",
         "axes": dict(axes),
         "coverage": dict(coverage),

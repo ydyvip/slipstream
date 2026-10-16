@@ -19,13 +19,13 @@ tables' independent variable is radians (JSBSim <independentVar>alpha-rad).
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from . import _units
+from ._clock import generated_utc
 from .normalize_coefficients import COEFF_FIELDS
 
 # how an aero coefficient maps onto a JSBSim axis property suffix (body frame)
@@ -118,7 +118,7 @@ def generate_xml(
 
     return tmpl.render(
         blocks=blocks,
-        generated_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        generated_utc=generated_utc(),
         sw_ft=sw_ft, bw_ft=bw_ft, cbar_ft=cbar_ft,
         scale=1.0,
     )
