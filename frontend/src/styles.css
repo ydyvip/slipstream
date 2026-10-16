@@ -1,22 +1,9 @@
 /* Slipstream — dark engineering-tool theme */
 
 :root {
-  --bg: #0b0c0e;
-  --panel: #131519;
-  --panel-2: #191c21;
-  --border: #23262c;
-  --border-strong: #2f3339;
-  --text: #e7e9ec;
-  --text-2: #9aa1ab;
-  --muted: #667080;
-  --accent: #35c5dd;
-  --accent-dim: #1b7f92;
-  --readout: #f0b429;
-  --good: #199e70;
-  --warn: #c98500;
-  --danger: #e05252;
-  --grid: #1e2126;
-  --axis: #3a3f47;
+  /* All colours live in themeConfig.ts and are injected onto :root as the
+     --vars below by src/theme.ts at startup. Do NOT hardcode palette values
+     here — edit themeConfig.ts instead (theme.ts maps token -> CSS var). */
   /* CJK fallbacks after the Latin fonts (Chakra Petch / IBM Plex Mono carry no CJK glyphs). */
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Microsoft YaHei", "PingFang SC", monospace;
   --sans: "Chakra Petch", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -488,11 +475,18 @@ body {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  /* Allow a .field to shrink below its content's intrinsic width inside a
+     grid/flex row, so overflow-prone controls (number inputs with a wide
+     intrinsic size) never push the row past its panel. */
+  min-width: 0;
 }
 
 .field-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, 1fr) instead of 1fr: the auto minimum of a 1fr track resolves
+     to the longest child's min-content size (a number input's intrinsic
+     ~200px), which on narrow panels shoves the right column past the panel. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -506,6 +500,8 @@ body {
 .field input,
 .field select {
   font: inherit;
+  width: 100%;
+  min-width: 0;
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border-strong);
@@ -852,7 +848,7 @@ body {
 
 .chart-tooltip {
   position: absolute;
-  background: rgba(19, 21, 25, 0.95);
+  background: rgba(17, 24, 40, 0.95);
   border: 1px solid var(--border-strong);
   border-radius: 6px;
   padding: 7px 10px;
@@ -1310,8 +1306,8 @@ body {
 body {
   /* faint blueprint grid over the base */
   background:
-    linear-gradient(rgba(53, 197, 221, 0.022) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(53, 197, 221, 0.022) 1px, transparent 1px),
+    linear-gradient(rgba(0, 82, 231, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 82, 231, 0.03) 1px, transparent 1px),
     var(--bg);
   background-size: 28px 28px, 28px 28px, auto;
 }
@@ -1336,12 +1332,12 @@ body {
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #04181c;
+  color: #fff;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #5fd7ea;
-  border-color: #5fd7ea;
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
 }
 
 .segmented {
@@ -1358,7 +1354,7 @@ body {
 .seg {
   white-space: nowrap;
   border: 1px solid var(--border-strong);
-  background: rgba(19, 21, 25, 0.9);
+  background: rgba(17, 24, 40, 0.9);
   text-transform: uppercase;
   font-size: 11.5px;
   font-weight: 500;
@@ -1371,10 +1367,10 @@ body {
 }
 
 .seg-active {
-  background: rgba(53, 197, 221, 0.14);
+  background: rgba(0, 82, 231, 0.16);
   border-color: var(--accent);
   color: var(--accent);
-  box-shadow: inset 0 0 0 1px rgba(53, 197, 221, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(0, 82, 231, 0.35);
 }
 
 /* --- panels with corner brackets --------------------------------------- */
@@ -1441,7 +1437,7 @@ body {
 
 .hero-value {
   color: var(--readout);
-  text-shadow: 0 0 18px rgba(240, 180, 41, 0.25);
+  text-shadow: 0 0 18px rgba(255, 141, 40, 0.25);
   font-weight: 600;
 }
 
@@ -1481,7 +1477,7 @@ body {
 .slice-pos input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(53, 197, 221, 0.35);
+  box-shadow: 0 0 0 1px rgba(0, 82, 231, 0.35);
 }
 
 /* --- dropzone: blueprint frame ------------------------------------------ */
@@ -1490,15 +1486,15 @@ body {
   border-radius: 0;
   border: 1px dashed var(--accent-dim);
   background:
-    linear-gradient(rgba(53, 197, 221, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(53, 197, 221, 0.03) 1px, transparent 1px),
+    linear-gradient(rgba(0, 82, 231, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 82, 231, 0.04) 1px, transparent 1px),
     rgba(10, 12, 14, 0.6);
   background-size: 22px 22px, 22px 22px, auto;
 }
 
 .dropzone-over {
   border-color: var(--accent);
-  background-color: rgba(53, 197, 221, 0.06);
+  background-color: rgba(0, 82, 231, 0.08);
 }
 
 .dropzone-title {
@@ -1518,7 +1514,7 @@ body {
 .chip {
   clip-path: var(--chamfer);
   border: 1px solid var(--border-strong);
-  background: rgba(19, 21, 25, 0.9);
+  background: rgba(17, 24, 40, 0.9);
   color: var(--text-2);
   font-family: var(--mono);
   font-size: 11px;
@@ -1631,7 +1627,7 @@ body {
 }
 
 .dropzone-sample:hover {
-  color: #5fd7ea;
+  color: var(--accent-dim);
 }
 
 .viewer-tools {
