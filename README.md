@@ -133,8 +133,17 @@ cd backend && .venv/bin/pip install pytest httpx && .venv/bin/python -m pytest -
 cd ../frontend && npx tsc --noEmit && npm test
 ```
 
+### Running the openfoam
+
+```sh
+$env:SLIPSTREAM_OPENFOAM = "C:\path\to\slipstream\backend\scripts\openfoam.cmd"
+cd C:\path\to\slipstream\backend
+python -m uvicorn app.main:app --port 8000
+```
+
 The backend tests don't need OpenFOAM. `backend/tests/e2e_smoke.py` runs a real
 coarse analysis against a backend on `:8000` and does.
+
 
 ## Fair warnings
 

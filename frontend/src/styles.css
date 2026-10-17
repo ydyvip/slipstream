@@ -500,7 +500,6 @@ body {
 .field input,
 .field select {
   font: inherit;
-  width: 100%;
   min-width: 0;
   background: var(--bg);
   color: var(--text);
