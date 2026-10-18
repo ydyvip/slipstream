@@ -123,6 +123,15 @@ export interface RunConfig {
   /** v8.2: original run name that re-solve names are built from. */
   resolve_base_name?: string;
   /**
+   * v10.1: written by the backend onto every member of a case-matrix program —
+   * the program's shared id, plus which ≤200-member batch this member landed
+   * in and how many batches there are. Present only on members submitted after
+   * the batching change.
+   */
+  program_id?: string;
+  batch_index?: number;
+  batch_count?: number;
+  /**
    * v10: multi-dimensional test program (see CaseMatrixConfig). Mutually
    * exclusive with the single-axis sweeps (yaw_sweep/pitch_sweep/mesh_sweep)
    * and trim; the backend fans one run out per Cartesian-product combination.
@@ -264,7 +273,9 @@ export interface RunSummary {
 /**
  * POST /api/runs response. Plain runs return just `id`; a yaw sweep also
  * carries the shared `group_id` and all member `ids` (`id` = first member).
- * A case-matrix program returns `{id, group_id, ids, kind: "matrix"}`.
+ * A case-matrix program returns `{id, group_id, ids, kind: "matrix"}` plus,
+ * since v10.1, the shared `program_id` and the `batches` it was split into
+ * (≤200 members each) — single-batch programs still carry all of them.
  */
 export interface CreateRunResponse {
   id: string;
@@ -272,6 +283,21 @@ export interface CreateRunResponse {
   ids?: string[];
   /** "matrix" when the run was a multi-dim case-matrix program. */
   kind?: string;
+  /** v10.1: shared by every batch of a case-matrix program. */
+  program_id?: string;
+  /** v10.1: the ≤200-member batches this program was split into. */
+  batches?: ProgramBatch[];
+  batch_count?: number;
+  total?: number;
+}
+
+/** v10.1: one ≤200-member chunk of a batched case-matrix program. */
+export interface ProgramBatch {
+  group_id: string;
+  batch_index: number;
+  /** Count of finished members; only on the aggregate program view. */
+  done?: number;
+  total?: number;
 }
 
 export interface ModelInfo {
@@ -505,6 +531,7 @@ export interface TrimSummary {
 }
 
 /** GET /api/groups/{group_id} — yaw sweep summary. */
+/** v10.1: also the shape of GET /api/programs/{pid} (program aggregates). */
 export interface GroupDetail {
   group_id: string;
   name: string;
@@ -519,6 +546,13 @@ export interface GroupDetail {
   trim?: TrimSummary;
   /** v8: present for mesh-independence sweeps (partial while refining). */
   mesh?: MeshSweepSummary;
+  /** v10.1: set when the group is one batch of a batched program. */
+  program_id?: string;
+  batch_index?: number;
+  batch_count?: number;
+  /** v10.1: per-batch progress on the aggregate GET /api/programs/{pid} view. */
+  batches?: ProgramBatch[];
+  total?: number;
 }
 
 /** GET /api/runs/{id}/log?tail=N */
@@ -722,6 +756,11 @@ export const api = {
   /** Yaw sweep group summary (member statuses + Cd/drag as they finish). */
   getGroup(groupId: string): Promise<GroupDetail> {
     return getJson<GroupDetail>(`/groups/${groupId}`);
+  },
+
+  /** v10.1: case-matrix program across all its batches — same shape as a group. */
+  getProgram(programId: string): Promise<GroupDetail> {
+    return getJson<GroupDetail>(`/programs/${programId}`);
   },
 
   getLog(id: string, tail = 200): Promise<LogTail> {

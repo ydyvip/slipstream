@@ -517,8 +517,8 @@ def _post_matrix(monkeypatch, cfg):
      "cannot be combined"),
     ({"case_matrix": {"alpha_deg": [0, 15]}, "trim": {"weight_g": 700}},
      "cannot be combined"),
-    ({"case_matrix": {"alpha_deg": [0] * 10, "beta_deg": [0] * 10,
-                      "delta_e_deg": [0] * 10}}, "over the 200-run cap"),
+    ({"case_matrix": {"alpha_deg": [0] * 30, "beta_deg": [0] * 30}},
+     f"over the {main.matrix_program.MAX_PROGRAM_MEMBERS}-run cap"),
 ])
 def test_case_matrix_validation(monkeypatch, extra, fragment):
     cfg = {"unit": "mm", "wind_speed": 15, "quality": "coarse", **extra}
@@ -599,4 +599,128 @@ def test_case_matrix_group_reports_metadata_sorted(monkeypatch):
     finally:
         for rid in made:
             main.runner.states.pop(rid, None)
+
+
+def _matrix_children(monkeypatch):
+    """Post-matrix capture helper: records (cfg, group_id) per fan-out, never
+    queuing a real solve. The ids returned are m1, m2, ... like _post_matrix."""
+    monkeypatch.setattr(main.foamenv, "find_openfoam",
+                        lambda: "/opt/homebrew/bin/openfoam")
+    submitted = []
+    monkeypatch.setattr(main, "_submit_run",
+                        lambda data, cfg, group_id=None: submitted.append(
+                            {"cfg": cfg, "group_id": group_id})
+                        or f"m{len(submitted)}")
+    return submitted
+
+
+def _seed_matrix_states(submitted):
+    """Write each captured child into the in-memory runner store as a done run,
+    so the group/program endpoints can read the members."""
+    made = []
+    for i, item in enumerate(submitted):
+        child = item["cfg"]
+        rid = f"m{i}"
+        main.runner.states[rid] = {
+            "id": rid, "name": child["name"], "status": "done", "progress": 1.0,
+            "message": "Done", "created_at": float(i), "config": child,
+            "group_id": item["group_id"], "model": None, "mesh_cells": 1000,
+            "result": {"cd": 0.01 * (i % 7), "drag_N": 0.01 * (i % 7)},
+            "error": None, "log": None}
+        made.append(rid)
+    return made
+
+
+def test_case_matrix_program_batches_aggregate(monkeypatch):
+    """A >200-member program splits into ≤200-member batches under one
+    program_id, and GET /api/programs/{pid} joins them into one
+    wind-tunnel-ordered grid; the per-batch group reports its part marker."""
+    import json as _json
+    submitted = _matrix_children(monkeypatch)
+    cfg = {"name": "big", "unit": "mm", "wind_speed": 15, "quality": "coarse",
+           "case_matrix": {"alpha_deg": list(range(19)),
+                           "beta_deg": list(range(12))}}  # 19 × 12 = 228 = 200 + 28
+    with open(SPHERE, "rb") as fh:
+        res = client.post("/api/runs", files={"stl": ("s.stl", fh, "model/stl")},
+                          data={"config": _json.dumps(cfg)})
+    assert res.status_code == 201, res.text
+    body = res.json()
+    assert body["kind"] == "matrix"
+    assert len(body["program_id"]) == 32
+    assert body["total"] == 228 and body["batch_count"] == 2
+    assert len(body["ids"]) == 228 and len(body["batches"]) == 2
+    assert len(submitted) == 228
+    per_batch = sorted(
+        (b["batch_index"], sum(1 for item in submitted
+                               if item["cfg"]["batch_index"] == b["batch_index"]))
+        for b in body["batches"])
+    assert per_batch == [(0, 200), (1, 28)]
+    assert len({item["group_id"] for item in submitted}) == 2
+    assert all(item["cfg"]["program_id"] == body["program_id"]
+               for item in submitted)
+    assert all(item["cfg"]["batch_count"] == 2 for item in submitted)
+
+    made = _seed_matrix_states(submitted)
+    try:
+        pid = body["program_id"]
+        g = client.get(f"/api/programs/{pid}").json()
+        assert g["program_id"] == pid and g["kind"] == "matrix"
+        assert g["name"] == "big"
+        assert g["batch_count"] == 2 and g["total"] == 228
+        assert len(g["runs"]) == 228
+        assert {(b["batch_index"], b["total"], b["done"])
+                for b in g["batches"]} == {(0, 200, 200), (1, 28, 28)}
+        # alpha slowest, beta fastest — the grid stays contiguous across batches.
+        keys = [(r["alpha_deg"], r["beta_deg"]) for r in g["runs"]]
+        assert keys == sorted(keys)
+        assert keys[0] == (0, 0) and keys[-1] == (18, 11)
+        # The per-batch group endpoint carries the program markers and the part
+        # suffix, so history cards can tell " · part 1/2" apart.
+        grp = client.get(f"/api/groups/{body['batches'][0]['group_id']}").json()
+        assert grp["program_id"] == pid and grp["batch_index"] == 0
+        assert grp["batch_count"] == 2
+        assert grp["name"] == "big · part 1/2"
+        assert len(grp["runs"]) == 200
+        assert client.get("/api/programs/nope").status_code == 404
+    finally:
+        for rid in made:
+            main.runner.states.pop(rid, None)
+
+
+def test_case_matrix_single_batch_backward_compatible(monkeypatch):
+    """A ≤200-member program keeps its old response shape (group_id/ids/kind)
+    while adding program_id and a one-element batches list — the aggregate
+    endpoint still works for it."""
+    import json as _json
+    submitted = _matrix_children(monkeypatch)
+    cfg = {"name": "tail", "unit": "mm", "wind_speed": 15, "quality": "coarse",
+           "case_matrix": {"alpha_deg": [0, 5], "beta_deg": [-2, 0, 4],
+                           "delta_e_deg": [-8, 0]}}  # 12 members, one batch
+    with open(SPHERE, "rb") as fh:
+        res = client.post("/api/runs", files={"stl": ("s.stl", fh, "model/stl")},
+                          data={"config": _json.dumps(cfg)})
+    assert res.status_code == 201, res.text
+    body = res.json()
+    assert body["kind"] == "matrix"
+    assert len(body["group_id"]) == 32
+    assert len(body["program_id"]) == 32
+    assert body["total"] == 12 and body["batch_count"] == 1
+    assert len(body["batches"]) == 1 and body["batches"][0]["batch_index"] == 0
+    assert len(body["ids"]) == 12
+    assert all(item["cfg"]["program_id"] == body["program_id"]
+               for item in submitted)
+    assert all(item["cfg"]["batch_index"] == 0 and item["cfg"]["batch_count"] == 1
+               for item in submitted)
+
+    made = _seed_matrix_states(submitted)
+    try:
+        g = client.get(f"/api/programs/{body['program_id']}").json()
+        assert g["kind"] == "matrix" and g["name"] == "tail"
+        assert g["batch_count"] == 1 and g["total"] == 12
+        assert len(g["batches"]) == 1
+        assert len(g["runs"]) == 12
+    finally:
+        for rid in made:
+            main.runner.states.pop(rid, None)
+
 

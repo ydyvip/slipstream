@@ -311,6 +311,7 @@ export function RunDetailView({
         (run.config.case_matrix ? (
           <MatrixPanel
             groupId={run.group_id}
+            programId={run.config.program_id}
             activeRunId={id}
             onSelectRun={onSelectRun}
           />

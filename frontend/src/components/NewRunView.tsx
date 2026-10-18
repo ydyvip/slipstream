@@ -823,9 +823,10 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
       setSubmitting(true);
       setSubmitError(null);
       try {
-        // For a program the response `id` is the first member run.
-        const { id } = await api.createRun(file, config);
-        onCreated(id);
+        // A program's response carries the shared program_id — navigate to it
+        // (all batches), falling back to the first member run id otherwise.
+        const res = await api.createRun(file, config);
+        onCreated(res.program_id ?? res.id);
       } catch (err) {
         setSubmitError(
           err instanceof Error && err.name === "BackendUnreachableError"
@@ -1918,7 +1919,10 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
               <span className="estimate-eq"> {t("program.estimateEq")}</span>
               {estimate >= CASE_CAP && (
                 <span className="estimate-warn">
-                  {t("program.estimateWarn")}
+                  {t("program.batchedNotice", {
+                    n: Math.ceil(estimate / CASE_CAP),
+                    cap: CASE_CAP,
+                  })}
                 </span>
               )}
             </div>

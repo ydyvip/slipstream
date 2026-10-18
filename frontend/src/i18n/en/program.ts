@@ -28,6 +28,8 @@ export const program: Record<string, string> = {
   "program.estimate": "{n} cases",
   "program.estimateEq": "= product of the non-empty dimensions",
   "program.estimateWarn": " — that's a lot of full CFD solves",
+  "program.batchedNotice":
+    " — will run in batches of up to {cap} ({n} batches)",
   "program.starting": "Starting…",
   "program.btnRun": "Run program ({n} cases)",
   "program.startFailed": "Failed to start the program: {msg}",
@@ -50,4 +52,5 @@ export const program: Record<string, string> = {
     "No α × β grid — this program sweeps only control deflections.",
   "matrix.deltaValue": "{mark} {deg}°",
   "matrix.caseLabel": "case",
+  "matrix.partOf": "part {n}/{total}",
 };

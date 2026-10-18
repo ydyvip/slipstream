@@ -9,6 +9,9 @@ import { uniqueSorted } from "../lib/program";
 
 interface Props {
   groupId: string;
+  /** v10.1: when set, fetch the whole batched program via /api/programs/{pid}
+   * (all batches joined) instead of this group's single batch. */
+  programId?: string;
   /** The member currently open in the detail view (highlighted, not clickable). */
   activeRunId: string;
   onSelectRun: (id: string) => void;
@@ -33,9 +36,12 @@ function fmtDeg(v: number): string {
  * small pills. Otherwise it falls back to the plain per-run list. Polls
  * /api/groups/{gid} every ~3s until every member settles, like SweepPanel.
  */
-export function MatrixPanel({ groupId, activeRunId, onSelectRun }: Props) {
+export function MatrixPanel({ groupId, programId, activeRunId, onSelectRun }: Props) {
   const t = useT();
-  const fetchGroup = useCallback(() => api.getGroup(groupId), [groupId]);
+  const fetchGroup = useCallback(
+    () => (programId ? api.getProgram(programId) : api.getGroup(groupId)),
+    [programId, groupId],
+  );
   const [group, setGroup] = useState<GroupDetail | null>(null);
   const allSettled =
     group !== null && group.runs.every((r) => isTerminal(r.status));
@@ -114,6 +120,18 @@ export function MatrixPanel({ groupId, activeRunId, onSelectRun }: Props) {
           {t("sweep.metaSpeed", { speed: group.wind_speed })} ·{" "}
           {group.quality} ·{" "}
           {t("sweep.metaFinished", { settled, total: members.length })}
+          {group.batch_count != null &&
+            group.batch_count > 1 &&
+            group.batch_index != null && (
+              <>
+                {" "}
+                ·{" "}
+                {t("matrix.partOf", {
+                  n: group.batch_index + 1,
+                  total: group.batch_count,
+                })}
+              </>
+            )}
         </span>
         <button
           className="seg sweep-export"

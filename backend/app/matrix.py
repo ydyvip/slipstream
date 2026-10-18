@@ -26,10 +26,17 @@ DIMS = (
 )
 MATRIX_KEYS = tuple(d[0] for d in DIMS)
 
+# Program-level cap: the largest a whole case_matrix may fan out to, however
+# many batches it takes. It is a hard cap so a typo can't queue thousands of
+# solves.
+MAX_PROGRAM_MEMBERS = 500
+
 # A yaw/pitch sweep batches up to 8 members; a matrix programs a whole sweep
 # grid, so it gets a documented, looser ceiling that the frontend also warns at
 # (TestProgramView.CASE_CAP). It is still a hard cap so a typo can't queue
-# hundreds of solves.
+# hundreds of solves. It also doubles as the chunk size: a program larger than
+# this is split into several ≤200-member batches (each its own group, all
+# sharing one program_id).
 MAX_MATRIX_MEMBERS = 200
 
 

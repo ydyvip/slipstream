@@ -145,8 +145,22 @@ export default function App() {
         <main className="main">
           {route.view === "new" && (
             <NewRunView
-              onCreated={(id) => {
+              onCreated={async (id) => {
                 setRefresh((n) => n + 1);
+                // v10.1: a matrix submit routes by program_id — resolve it to
+                // the first member run, whose detail renders the aggregated
+                // matrix panel (all batches) above the member's own results.
+                if (id.length === 32 && /^[0-9a-f]{32}$/.test(id)) {
+                  try {
+                    const prog = await api.getProgram(id);
+                    if (prog.runs.length) {
+                      setRoute({ view: "run", id: prog.runs[0].id });
+                      return;
+                    }
+                  } catch {
+                    /* not a program — treat as a plain run id below */
+                  }
+                }
                 setRoute({ view: "run", id });
               }}
               onImportMesh={() => setRoute({ view: "import" })}

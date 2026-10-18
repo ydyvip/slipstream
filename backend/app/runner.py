@@ -1,4 +1,5 @@
-"""FIFO run queue: one run at a time, executed on a background thread.
+"""N-worker run queue: SLIPSTREAM_WORKERS runs (default 2) execute in parallel
+on background threads; further runs wait in queue (FIFO) order.
 
 Each run lives in data/runs/<id>/ with:
     model.stl    original upload (unscaled)
@@ -83,17 +84,27 @@ class Runner:
         self.lock = threading.RLock()
         self.states: dict[str, dict] = {}
         self.queue: queue.Queue[str] = queue.Queue()
-        self.current: str | None = None
-        self._proc: subprocess.Popen | None = None  # currently running OF stage
-        self._cancel: set[str] = set()              # run ids requested to cancel
+        self.executing: set[str] = set()   # run ids currently executing
+        # run_id -> the OpenFOAM stage Popen for that run (None while between
+        # stages). Scoped per run so workers never touch each other's process.
+        self._procs: dict[str, subprocess.Popen | None] = {}
+        self._cancel: set[str] = set()     # run ids requested to cancel
         self._load_existing()
         # Nothing is solving at startup, so any leftover per-processor
         # decomposition is dead weight — reclaim it (harmless, ~45%/run).
         for rid in list(self.states):
             foamcase.free_processor_dirs(self.data_dir / rid / "case")
             self._clean_if_failed(rid)
-        self.thread = threading.Thread(target=self._loop, daemon=True)
-        self.thread.start()
+        # N worker threads consume the queue in parallel. Each run uses NPROCS
+        # solver ranks, so the default 2 workers fit 12 ranks on 16 logical /
+        # 12 physical cores without --oversubscribe. Tune with SLIPSTREAM_WORKERS
+        # (clamped to [1, 4]); daemon threads die with the process.
+        workers = int(os.environ.get("SLIPSTREAM_WORKERS", "2"))
+        self.workers = max(1, min(4, workers))
+        self.threads = [threading.Thread(target=self._loop, daemon=True)
+                        for _ in range(self.workers)]
+        for t in self.threads:
+            t.start()
 
     # ------------------------------------------------------------------ state
 
@@ -152,12 +163,12 @@ class Runner:
 
     def is_active(self, run_id: str) -> bool:
         with self.lock:
-            return self.current == run_id
+            return run_id in self.executing
 
     def delete(self, run_id: str) -> bool:
         """Remove run from memory (caller deletes files). False if executing."""
         with self.lock:
-            if self.current == run_id:
+            if run_id in self.executing:
                 return False
             self.states.pop(run_id, None)
             return True
@@ -175,7 +186,7 @@ class Runner:
                     self.update(run_id, status="cancelled", progress=0.0,
                                 message="Cancelled")
                     continue
-                self.current = run_id
+                self.executing.add(run_id)
             try:
                 self._execute(run_id)
             except _Cancelled:
@@ -194,7 +205,8 @@ class Runner:
             finally:
                 with self.lock:
                     self._cancel.discard(run_id)
-                    self.current = None
+                    self.executing.discard(run_id)
+                    self._procs.pop(run_id, None)
                 self._clean_if_failed(run_id)
 
     def _clean_if_failed(self, run_id: str) -> None:
@@ -219,7 +231,7 @@ class Runner:
             if s is None or s["status"] in TERMINAL:
                 return False
             self._cancel.add(run_id)
-            if run_id != self.current:  # queued, not yet running
+            if run_id not in self.executing:  # queued, not yet running
                 self.update(run_id, status="cancelled", progress=0.0,
                             message="Cancelled")
             return True
@@ -241,7 +253,7 @@ class Runner:
             raise RuntimeError(
                 "OpenFOAM not found. Install it with `brew install --cask "
                 "gerlero/openfoam/openfoam`, then re-run.") from None
-        self._proc = proc
+        self._procs[run_id] = proc
         try:
             while proc.poll() is None:
                 time.sleep(1.0)
@@ -251,7 +263,7 @@ class Runner:
                 if progress_cb:
                     progress_cb()  # may raise (divergence) — kill happens there
         finally:
-            self._proc = None
+            self._procs[run_id] = None
         if check and proc.returncode != 0:
             tail = self._log_tail(log_path, 30)
             explained = explain_foam_failure(log_path)
@@ -594,8 +606,9 @@ class Runner:
                 # is producing garbage — stop now with a useful message.
                 cd_last = hist["cd"][-1] if hist["cd"] else 0.0
                 if not math.isfinite(cd_last) or abs(cd_last) > 1e4:
-                    if self._proc is not None:
-                        self._kill_proc(self._proc)
+                    proc = self._procs.get(run_id)
+                    if proc is not None:
+                        self._kill_proc(proc)
                     raise RuntimeError(
                         f"solution diverged at iteration {it} (Cd={cd_last:.3g}). "
                         "Try a finer mesh, a lower wind speed, or check the STL "
@@ -604,8 +617,9 @@ class Runner:
                 # cavity, which corrupts the forces while residuals look fine.
                 umax = post.read_max_speed(case)
                 if self._speed_not_physical(umax, u0, it, iterations):
-                    if self._proc is not None:
-                        self._kill_proc(self._proc)
+                    proc = self._procs.get(run_id)
+                    if proc is not None:
+                        self._kill_proc(proc)
                     raise RuntimeError(
                         f"solution is not physical at iteration {it}: peak speed "
                         f"{umax:.3g} m/s is {umax / u0:.0f}x the {u0:g} m/s "
