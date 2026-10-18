@@ -60,6 +60,7 @@ for p in (str(BACKEND), str(AERO)):
         sys.path.insert(0, p)
 
 from app import foamcase, geometry, repair            # noqa: E402
+from src.cfd_matrix import resolve_cases                 # noqa: E402
 from src.geometry_ref import (                        # noqa: E402
     NU_M2S, REF_AREA_CM2, RHO_KGM3, V_INF_MPS,
     pitch_deg, yaw_deg,
@@ -101,7 +102,7 @@ def _vec3(v) -> str:
 
 def load_matrix() -> list[dict]:
     cfg = yaml.safe_load((AERO / "config" / "cfd_case_matrix.yaml").read_text(encoding="utf-8"))
-    return cfg["cases"]
+    return resolve_cases(cfg)
 
 
 def case_lookup(cid: str) -> dict:
@@ -377,6 +378,16 @@ def run_case(cid: str, quality: str = "coarse", timeout: int | None = None,
     case_data = case_lookup(cid)
     alpha = float(case_data.get("alpha_deg", 0.0))
     beta = float(case_data.get("beta_deg", 0.0))
+    # CH-3's STL is a single solid with no separately-named control surfaces;
+    # a matrix (grid) that deflects delta_e/delta_a/delta_r still runs with
+    # the deflections applied to the ABLATIVE case metadata (so the DB records
+    # them), but the physical mesh cannot hinge the control surfaces.  Warn so
+    # the silent no-op is never mistaken for applied control power.
+    for ctrl in ("delta_e_deg", "delta_a_deg", "delta_r_deg"):
+        dc = float(case_data.get(ctrl, 0.0))
+        if dc:
+            print(f"[{cid}] NOTE: {ctrl}={dc:+g} recorded, but the CH-3 "
+                  f"assembly has no separate control surface to hinge.")
 
     repaired = ensure_repaired()
     run_dir = RUNS / cid

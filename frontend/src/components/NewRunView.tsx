@@ -8,6 +8,12 @@ import { api, type Quality, type RunConfig, type StlUnit } from "../api";
 import { createViewer, buildSceneHelpers, type Viewer } from "../viewer/scene";
 import { nameFromFilename, formatInt } from "../lib/format";
 import { defaultPropPlacements } from "../lib/geometry";
+import {
+  f16PresetList,
+  matrixCaseCount,
+  parseDegList,
+  type SweepKey,
+} from "../lib/program";
 import { useT } from "../i18n";
 import {
   CUSTOM_PRESET,
@@ -60,6 +66,38 @@ const QUALITY_HINT_KEYS: Record<Quality, string> = {
   medium: "newrun.qualityMedium",
   fine: "newrun.qualityFine",
 };
+
+/** What you're setting up: one attitude, or a multi-dimensional case matrix. */
+type Mode = "single" | "program";
+
+/** v10 program sweep dimensions, in display order, with localized labels. */
+const SWEEP_FIELDS: { key: SweepKey; labelKey: string }[] = [
+  { key: "alpha_deg", labelKey: "program.fieldAlpha" },
+  { key: "beta_deg", labelKey: "program.fieldBeta" },
+  { key: "delta_e_deg", labelKey: "program.fieldDeltaE" },
+  { key: "delta_a_deg", labelKey: "program.fieldDeltaA" },
+  { key: "delta_r_deg", labelKey: "program.fieldDeltaR" },
+];
+
+const EMPTY_SWEEPS: Record<SweepKey, string> = {
+  alpha_deg: "",
+  beta_deg: "",
+  delta_e_deg: "",
+  delta_a_deg: "",
+  delta_r_deg: "",
+};
+
+/** F-16 build-up preset chips — one click fills that dimension's sweep box. */
+const PRESET_BUTTONS: { key: SweepKey; labelKey: string }[] = [
+  { key: "alpha_deg", labelKey: "newrun.presetAlpha" },
+  { key: "beta_deg", labelKey: "newrun.presetBeta" },
+  { key: "delta_e_deg", labelKey: "newrun.presetDeltaE" },
+  { key: "delta_a_deg", labelKey: "newrun.presetDeltaA" },
+  { key: "delta_r_deg", labelKey: "newrun.presetDeltaR" },
+];
+
+/** Warn when a program would fan out to this many runs or more. */
+const CASE_CAP = 200;
 
 /** Localized names for the custom layer fields, for validation messages. */
 const LAYER_FIELD_NAME_KEYS: Record<string, string> = {
@@ -173,6 +211,12 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
   const machNow = (parseFloat(windSpeed) || 0) / SPEED_OF_SOUND;
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // v10 multi-dim program mode: single-run attitude → case matrix. The sweep
+  // boxes keep raw text so the F-16 presets can fill them and users can edit.
+  const [mode, setMode] = useState<Mode>("single");
+  const [sweepText, setSweepText] = useState<Record<SweepKey, string>>(
+    EMPTY_SWEEPS,
+  );
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasHostRef = useRef<HTMLDivElement>(null);
@@ -716,12 +760,80 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
     if (f) void acceptFile(f);
   };
 
+  // v10 program mode: parse + validate every sweep box live (errors inline per
+  // field, like the old TestProgramView) and estimate the case count as the
+  // Cartesian product of the valid lists. Cheap: at most five small boxes.
+  const parsed = {} as Record<SweepKey, { list: number[]; error: string | null }>;
+  for (const f of SWEEP_FIELDS) {
+    const raw = sweepText[f.key].trim();
+    if (raw === "") {
+      parsed[f.key] = { list: [], error: null };
+      continue;
+    }
+    const list = parseDegList(raw);
+    parsed[f.key] = list.some((n) => !Number.isFinite(n))
+      ? { list: [], error: t("program.errNumber", { field: t(f.labelKey) }) }
+      : { list, error: null };
+  }
+  const estimate = matrixCaseCount(SWEEP_FIELDS.map((f) => parsed[f.key].list));
+  const sweepErrors = SWEEP_FIELDS.filter((f) => parsed[f.key].error !== null);
+  const caseMatrix: NonNullable<RunConfig["case_matrix"]> = {};
+  for (const f of SWEEP_FIELDS) {
+    if (parsed[f.key].list.length > 0) caseMatrix[f.key] = parsed[f.key].list;
+  }
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file || submitting) return;
     const ws = parseFloat(windSpeed);
     if (!Number.isFinite(ws) || ws <= 0) {
       setSubmitError(t("newrun.errWindSpeed"));
+      return;
+    }
+    if (mode === "program") {
+      // Multi-dim program: fan every combination of the swept dimensions into
+      // one run each via case_matrix (mutually exclusive with the single-run
+      // yaw/pitch/mesh sweeps and trim on the backend — none are sent here).
+      if (!name.trim()) {
+        setSubmitError(t("program.errName"));
+        return;
+      }
+      if (estimate === 0 || sweepErrors.length > 0) {
+        setSubmitError(t("program.needSweep"));
+        return;
+      }
+      if (flowModel === "supersonic" && ws / SPEED_OF_SOUND < 1.05) {
+        setSubmitError(t("newrun.errSupersonic"));
+        return;
+      }
+      if (flowModel === "incompressible" && ws > 200) {
+        setSubmitError(t("newrun.errCompressible"));
+        return;
+      }
+      const config: RunConfig = {
+        name: name.trim(),
+        unit,
+        wind_speed: ws,
+        yaw_deg: 0,
+        pitch_deg: 0,
+        quality,
+        ...(flowModel !== "incompressible" ? { flow_model: flowModel } : {}),
+        case_matrix: caseMatrix,
+      };
+      setSubmitting(true);
+      setSubmitError(null);
+      try {
+        // For a program the response `id` is the first member run.
+        const { id } = await api.createRun(file, config);
+        onCreated(id);
+      } catch (err) {
+        setSubmitError(
+          err instanceof Error && err.name === "BackendUnreachableError"
+            ? t("newrun.errBackend")
+            : t("program.startFailed", { msg: (err as Error).message }),
+        );
+        setSubmitting(false);
+      }
       return;
     }
     let sweep: number[] | undefined;
@@ -1144,7 +1256,28 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
 
       <form className="panel config-panel" onSubmit={submit}>
         <div className="panel-head">{t("newrun.panelTitle")}</div>
+        <div className="mode-switch">
+          <div className="segmented">
+            <button
+              type="button"
+              className={`seg${mode === "single" ? " seg-active" : ""}`}
+              onClick={() => setMode("single")}
+            >
+              {t("newrun.modeSingle")}
+            </button>
+            <button
+              type="button"
+              className={`seg${mode === "program" ? " seg-active" : ""}`}
+              onClick={() => setMode("program")}
+            >
+              {t("newrun.modeProgram")}
+            </button>
+          </div>
+          <span className="config-note mode-note">{t("newrun.modeHint")}</span>
+        </div>
         <div className="config-fields">
+          {mode === "single" && (
+            <>
           <label className="field">
             <span className="field-label">{t("newrun.fieldName")}</span>
             <input
@@ -1658,28 +1791,193 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
               <span className="config-note">{t("newrun.meshSweepQualityNote")}</span>
             )}
           </label>
+            </>
+          )}
+          {mode === "program" && (
+            <>
+          <label className="field">
+            <span className="field-label">{t("newrun.fieldName")}</span>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t("newrun.placeholderName")}
+              disabled={!file}
+            />
+          </label>
+          <label className="field">
+            <span className="field-label">{t("newrun.fieldUnit")}</span>
+            <select
+              value={unit}
+              onChange={(e) => setUnit(e.target.value as StlUnit)}
+              disabled={!file}
+            >
+              <option value="mm">{t("newrun.unitMm")}</option>
+              <option value="cm">{t("newrun.unitCm")}</option>
+              <option value="m">{t("newrun.unitM")}</option>
+              <option value="in">{t("newrun.unitIn")}</option>
+            </select>
+          </label>
+          <label className="field">
+            <span className="field-label">{t("newrun.fieldFlowModel")}</span>
+            <select
+              value={flowModel}
+              onChange={(e) =>
+                setFlowModel(
+                  e.target.value as NonNullable<RunConfig["flow_model"]>,
+                )
+              }
+              disabled={!file}
+            >
+              <option value="incompressible">
+                {t("newrun.flowIncompressible")}
+              </option>
+              <option value="transonic">
+                {t("newrun.flowTransonic")}
+              </option>
+              <option value="supersonic">
+                {t("newrun.flowSupersonic")}
+              </option>
+            </select>
+            <span className="config-note">{flowModelHint(flowModel, machNow, t)}</span>
+          </label>
+          <label className="field">
+            <span className="field-label">{t("newrun.fieldWindSpeed")}</span>
+            <input
+              type="number"
+              value={windSpeed}
+              onChange={(e) => setWindSpeed(e.target.value)}
+              min={0.1}
+              step="any"
+              disabled={!file}
+            />
+            <div className="chips">
+              {[10, 15, 25, 40].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  className="chip"
+                  disabled={!file}
+                  onClick={() => setWindSpeed(String(v))}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          </label>
+          <div className="sweep-block">
+            <div className="preset-row">
+              <span className="preset-label">{t("newrun.presetSection")}</span>
+              {PRESET_BUTTONS.map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  className="chip"
+                  disabled={!file}
+                  onClick={() =>
+                    setSweepText((s) => ({ ...s, [p.key]: f16PresetList(p.key) }))
+                  }
+                >
+                  {t(p.labelKey)}
+                </button>
+              ))}
+            </div>
+            <div className="sweep-grid">
+              {SWEEP_FIELDS.map((f) => (
+                <label className="field" key={f.key}>
+                  <span className="field-label">{t(f.labelKey)}</span>
+                  <input
+                    type="text"
+                    className="mono"
+                    value={sweepText[f.key]}
+                    onChange={(e) =>
+                      setSweepText((s) => ({ ...s, [f.key]: e.target.value }))
+                    }
+                    placeholder="-5, 0, 5"
+                    spellCheck={false}
+                    disabled={!file}
+                  />
+                  <span className="config-note sweep-field-hint">
+                    {t("program.sweepHint")}
+                  </span>
+                  {parsed[f.key].error && (
+                    <span className="field-error">{parsed[f.key].error}</span>
+                  )}
+                </label>
+              ))}
+            </div>
+            <div
+              className={`estimate-strip mono${
+                estimate >= CASE_CAP ? " estimate-over" : ""
+              }`}
+              role="status"
+            >
+              <span className="estimate-count">
+                {t("program.estimate", { n: formatInt(estimate) })}
+              </span>
+              <span className="estimate-eq"> {t("program.estimateEq")}</span>
+              {estimate >= CASE_CAP && (
+                <span className="estimate-warn">
+                  {t("program.estimateWarn")}
+                </span>
+              )}
+            </div>
+            {estimate === 0 && (
+              <div className="form-error">{t("program.needSweep")}</div>
+            )}
+          </div>
+          <label className="field">
+            <span className="field-label">{t("newrun.meshQuality")}</span>
+            <select
+              value={quality}
+              onChange={(e) => setQuality(e.target.value as Quality)}
+              disabled={!file}
+            >
+              {(Object.keys(QUALITY_HINT_KEYS) as Quality[]).map((q) => (
+                <option key={q} value={q}>
+                  {q} ({t(QUALITY_HINT_KEYS[q])})
+                </option>
+              ))}
+            </select>
+          </label>
+            </>
+          )}
         </div>
-        {submitError && <div className="form-error">{submitError}</div>}
+        {submitError && (
+          <div
+            className={`form-error${mode === "program" ? " test-program-error" : ""}`}
+          >
+            {submitError}
+          </div>
+        )}
         <button
           type="submit"
           className="btn btn-primary btn-block btn-run"
-          disabled={!file || submitting}
+          disabled={
+            !file ||
+            submitting ||
+            (mode === "program" && (estimate === 0 || sweepErrors.length > 0))
+          }
         >
           {submitting
-            ? t("newrun.btnStarting")
-            : meshSweep
-              ? t("newrun.btnMeshSweep")
-              : trimOn
-              ? t("newrun.btnTrim")
-              : sweepEnabled
-                ? t("newrun.btnSweep", {
-                    param: t(
-                      "newrun.sweep" +
-                        sweepParam.charAt(0).toUpperCase() +
-                        sweepParam.slice(1),
-                    ),
-                  })
-                : t("newrun.btnRun")}
+            ? mode === "program"
+              ? t("program.starting")
+              : t("newrun.btnStarting")
+            : mode === "program"
+              ? t("program.btnRun", { n: formatInt(estimate) })
+              : meshSweep
+                ? t("newrun.btnMeshSweep")
+                : trimOn
+                ? t("newrun.btnTrim")
+                : sweepEnabled
+                  ? t("newrun.btnSweep", {
+                      param: t(
+                        "newrun.sweep" +
+                          sweepParam.charAt(0).toUpperCase() +
+                          sweepParam.slice(1),
+                      ),
+                    })
+                  : t("newrun.btnRun")}
         </button>
         <div className="config-note">{t("newrun.runsSerial")}</div>
       </form>

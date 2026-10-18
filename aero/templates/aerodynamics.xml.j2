@@ -11,6 +11,12 @@
                qbar·Sw (times the reference length for moments) EXACTLY ONCE;
                the coefficient already carries the normalization, so no double
                multiplication is performed.
+  2D axes: a fitted surface is emitted as a <sum> of independent <table>s
+           inside the single qbar·Sw·len <product> — the 2D baseline table
+           (row + column lookup, gridded <tableData>) plus a plain 1D
+           derivative table per lateral control deflection (aileron/rudder).
+           The "multiply once" rule still holds: every table is a pure
+           dimensionless coefficient.
   Units: forces are lbf, moments are lbf·ft (JSBSim native).
   NOTE: Aerodynamic-direction sign conventions are as configured in
         coordinate_mapping.yaml.  Audit signs against the physical airframe
@@ -19,21 +25,47 @@
 <aerodynamics>
 {%- for b in blocks %}
   <axis name="{{ b.axis }}">
+{% if b.dim == "2d" %}
+    <description>{{ b.axis_comment }}: C_{{ b.coeff_long }} 2D build-up from OpenFOAM CFD
+      ({{ b.coeff }}), baseline over ({{ b.row_prop }}, {{ b.col_prop }})
+      ({{ b.indep_rad_or_deg }}), {{ b.num_points }} grid points{% if b.controls|length %} plus {{ b.controls|length }} control term(s){% endif %}.</description>
+{% else %}
     <description>{{ b.axis_comment }}: C_{{ b.coeff_long }} table from OpenFOAM CFD
       ({{ b.coeff }}), independent variable {{ b.indep_prop }} ({{ b.indep_rad_or_deg }}),
       {{ b.num_points }} breakpoints.</description>
+{% endif %}
     <function name="aero/coefficient/{{ b.coeff }}">
       <description>{{ b.coeff }} * qbar * Sw{% if b.factors|length > 3 %} * reference-length{% endif %}</description>
       <product>
         {%- for p in b.factors %}
         <property>{{ p }}</property>
         {%- endfor %}
+{% if b.dim == "2d" %}
+        <sum>
+          <table>
+            <independentVar lookup="row">{{ b.row_prop }}</independentVar>
+            <independentVar lookup="column">{{ b.col_prop }}</independentVar>
+            <tableData>
+{{ b.table_data }}
+            </tableData>
+          </table>
+{% for t in b.controls %}
+          <table>
+            <independentVar lookup="row">{{ t.prop }}</independentVar>
+            <tableData>
+{{ t.rows }}
+            </tableData>
+          </table>
+{% endfor %}
+        </sum>
+{% else %}
         <table>
           <independentVar lookup="row">{{ b.indep_prop }}</independentVar>
           <tableData>
 {{ b.table_rows }}
           </tableData>
         </table>
+{% endif %}
       </product>
     </function>
   </axis>

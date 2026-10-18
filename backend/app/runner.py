@@ -481,7 +481,8 @@ class Runner:
             str(rd / "model.stl"), config["unit"], float(config.get("yaw_deg") or 0),
             str(rd / "model_prepared.stl"),
             pitch_deg=float(config.get("pitch_deg") or 0),
-            roll_deg=float(config.get("roll_deg") or 0))
+            roll_deg=float(config.get("roll_deg") or 0),
+            deflections=config.get("deflections"))
 
         # Half-model symmetry is only valid if the model really is mirror-
         # symmetric about its centerline (Y=0). If not, auto-cancel here

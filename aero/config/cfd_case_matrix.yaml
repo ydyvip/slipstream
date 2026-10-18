@@ -5,7 +5,11 @@
 # Conventions here are the aerodynamic reference frame:
 #   alpha_deg : XZ-plane angle of attack, nose up positive
 #   beta_deg  : side-slip, positive = flow from port (right-handed about -Z aero)
-#   delta_*   : control deflections (deg)
+#   delta_e_deg : elevator deflection, trailing-edge-down (nose-up) positive
+#   delta_a_deg : aileron deflection, positive = roll right (starboard down)
+#   delta_r_deg : rudder deflection, positive = yaw right (nose to starboard)
+#   delta_*: control deflections (deg). Every per-case entry may carry
+#   delta_e_deg/delta_a_deg/delta_r_deg; absent control fields default to 0.
 #
 # Per-case reference/conditions override the defaults in aircraft_geometry.yaml.
 
@@ -34,6 +38,8 @@ reference:
   moment_ref_z_m: 0.0
 
 # AoA alpha sweep (delta_e=0) -> LIFT/DRAG/PITCH tables
+# Per-case schema: {id, alpha_deg, beta_deg, delta_e_deg, delta_a_deg,
+#                   delta_r_deg} — delta_* default 0 when omitted.
 cases:
   - {id: "ch3_a-04_b00", alpha_deg: -4.0}
   - {id: "ch3_a00_b00",  alpha_deg: 0.0}
@@ -46,3 +52,22 @@ cases:
   - {id: "ch3_a00_bm05", alpha_deg: 0.0, beta_deg: -5.0}
   - {id: "ch3_a00_b05",  alpha_deg: 0.0, beta_deg: 5.0}
   - {id: "ch3_a00_b10",  alpha_deg: 0.0, beta_deg: 10.0}
+
+# 2-DIMENSIONAL TEST PROGRAMS (grids)
+# -----------------------------------
+# Instead of (or in addition to) explicit `cases:`, a wind-tunnel program can
+# be declared as a product grid: each grid expands (via
+# src/cfd_matrix.expand_grids / resolve_cases) into one explicit case per
+# combination of the listed axes, with deterministic ids. Axis lists may be
+# any of: alpha_deg, beta_deg, delta_e_deg, delta_a_deg, delta_r_deg.
+# Control axes NOT listed in a grid default to 0 deg on every expanded case.
+# Uncomment the block below to model an alpha × beta × control-deflection
+# program (6·3·3 = 54 cases); the table fitter then emits 2D tables
+# (longitudinal axes: alpha × delta_e; lateral axes: alpha × beta) with 1D
+# fallback when the data only spans a single value of the inner axis.
+#
+# grids:
+#   - name: alpha-beta-delta-e
+#     alpha_deg: [-4, 0, 4, 8, 12, 16]
+#     beta_deg: [0, 5, 10]
+#     delta_e_deg: [-8, 0, 8]

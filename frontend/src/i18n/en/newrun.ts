@@ -188,6 +188,20 @@ export const newrun: Record<string, string> = {
   "newrun.meshSweepQualityNote":
     "set by the mesh sweep: coarse, then medium and fine only if needed",
 
+  // Mode switch (single run vs multi-dim program).
+  "newrun.modeSingle": "Single run",
+  "newrun.modeProgram": "Multi-dim program",
+  "newrun.modeHint":
+    "single run solves one attitude — program fans every combination of the swept dimensions into its own run",
+
+  // F-16 build-up preset chips (exact JSBSim aero-table envelopes).
+  "newrun.presetSection": "F-16 build-up presets",
+  "newrun.presetAlpha": "α −10…45° /5°",
+  "newrun.presetBeta": "β ±30° /5°",
+  "newrun.presetDeltaE": "δe −25…25° /12.5°",
+  "newrun.presetDeltaA": "δa −25…25° /12.5°",
+  "newrun.presetDeltaR": "δr −25…25° /12.5°",
+
   // Run button + footer.
   "newrun.btnStarting": "Starting…",
   "newrun.btnMeshSweep": "Run mesh independence sweep",

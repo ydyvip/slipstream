@@ -31,6 +31,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src._clock import generated_utc  # noqa: E402
+from src.cfd_matrix import resolve_cases  # noqa: E402
 from src.compare_jsbsim_cfd import compare  # noqa: E402
 from src.fit_aero_tables import build_tables, write_tables  # noqa: E402
 from src.generate_jsbsim_xml import generate_xml  # noqa: E402
@@ -116,7 +117,7 @@ def run_pipeline(root: Path, configs: dict[str, dict] | None = None,
 
     cfg = configs or load_configs(root)
     matrix = cfg["matrix"]
-    cases = matrix.get("cases", [])
+    cases = resolve_cases(matrix)
     envelope = {
         "alpha": (cfg["geometry"].get("envelope", {}).get("alpha_min_deg"),
                   cfg["geometry"].get("envelope", {}).get("alpha_max_deg")),

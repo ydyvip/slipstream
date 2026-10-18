@@ -7,15 +7,20 @@ Produces, for every case in config/cfd_case_matrix.yaml:
 
 The data is derived from a smooth analytic model so the aero pipeline can be
 exercised end-to-end deterministically (unit tests assert we recover the exact
-generating functions).  The generating functions are chosen to be
-physically sane:
+generating functions).  The model is *multi-dimensional* (I): it supports an
+alpha x beta x control-deflection test program via ``model_coefficients``,
+which reduces EXACTLY to the classical 1D model when beta and every control
+deflection are zero:
 
-  CL(alpha) = CL_a * alpha + CL_0                      (thin-airfoil slope)
-  CD(alpha) = CD_0 + k * CL^2                          (drag polar)
-  Cm(alpha) = Cm_0 + Cm_a * alpha                      (static margin)
-  CY(beta)  = CY_b * beta
-  Cl(beta)  = Cl_b * beta
-  Cn(beta)  = Cn_b * beta
+  CL(alpha, beta, delta_e) = CL_a*alpha + CL_0        (thin-airfoil slope)
+                             + tiny alpha*beta coupling
+                             + linear delta_e control with alpha falloff
+  CD(alpha, beta, delta_e) = drag polar (+ beta-induced + delta_e drag rise)
+  Cm(alpha, delta_e)       = Cm_0 + Cm_a*alpha + delta_e shift
+  CY(alpha, beta, delta_a, delta_r)   = beta sideforce with alpha-dependent
+                                        slope + delta_r + small delta_a
+  Cl/Cn(alpha, beta, delta_a, delta_r)= (alpha,beta) base + delta_a/delta_r
+                                        control with alpha effectiveness
 
 Moments are computed about the case's CofR (moment_ref of the matrix
 defaults) so the pipeline's moment-reference shift to the CG is actually
@@ -30,6 +35,7 @@ from __future__ import annotations
 
 import math
 import shutil
+import sys
 from pathlib import Path
 
 import yaml
@@ -37,10 +43,78 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "config"
 
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.cfd_matrix import resolve_cases  # noqa: E402
+
 
 def load_matrix() -> dict:
     with open(CONFIG / "cfd_case_matrix.yaml", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def _control_eff(alpha_rad: float) -> float:
+    """Control effectiveness factor vs alpha ("alpha falloff"): 1.0 at
+    alpha=0, linearly degrading toward high |alpha| (0.7 at |alpha|=pi)."""
+    return 1.0 - 0.3 * abs(alpha_rad) / math.pi
+
+
+def model_coefficients(
+    alpha_deg: float,
+    beta_deg: float,
+    delta_e_deg: float = 0.0,
+    delta_a_deg: float = 0.0,
+    delta_r_deg: float = 0.0,
+) -> dict[str, float]:
+    """Analytic coefficient model (dimensionless, deterministic, no RNG).
+
+    Ground truth for the 2D table tests: every term that involves beta or a
+    control deflection vanishes when that input is zero, so at
+    beta=delta_e=delta_a=delta_r=0 the model reduces EXACTLY to the original
+    1D functions used by the repo's synthetic sweeps.
+
+    Returns {'CL', 'CD', 'CY', 'Cl_roll', 'Cm_pitch', 'Cn_yaw'}.
+    """
+    a = math.radians(float(alpha_deg))
+    b = math.radians(float(beta_deg))
+    de = math.radians(float(delta_e_deg))
+    da = math.radians(float(delta_a_deg))
+    dr = math.radians(float(delta_r_deg))
+
+    # baseline 1D coefficients (keep the historic sample constants)
+    CL_a, CL_0 = 2.0 * math.pi / 6.0, 0.05          # ~ per rad slope / offset
+    CD_0, k = 0.020, 0.045
+    Cm_0, Cm_a = -0.010, -0.30                     # stable: dCm/dalpha < 0
+    CY_b, Cl_b, Cn_b = 0.15, 0.12, 0.06
+
+    # multi-axis coupling (all vanish at zero beta / zero controls)
+    beta_cl, beta_cd = 0.03, 0.05          # tiny beta influence on lift/drag
+    CY_ab = 0.15                           # alpha-dependent sideforce slope
+    Cl_ab, Cn_ab = 0.10, -0.05             # alpha-dependent roll/yaw base
+
+    # control power (per rad), scaled by the alpha falloff
+    CL_de, CD_de, Cm_de = 2.6, 0.30, -0.55
+    CY_dr, CY_da = 0.20, 0.02
+    Cl_da, Cl_dr = 0.11, 0.01
+    Cn_dr, Cn_da = -0.05, 0.03
+
+    cl_base = CL_a * a + CL_0
+    CL = cl_base + beta_cl * a * b + CL_de * de * _control_eff(a)
+    CD = (CD_0 + k * cl_base * cl_base
+          + beta_cd * b * b
+          + CD_de * abs(de) * _control_eff(a))
+    Cm = Cm_0 + Cm_a * a + Cm_de * de
+    CY = CY_b * b * (1.0 + CY_ab * a) + CY_dr * dr + CY_da * da
+    Cl_roll = Cl_b * b * (1.0 + Cl_ab * a) + Cl_da * da * _control_eff(a) \
+        + Cl_dr * dr * _control_eff(a)
+    Cn_yaw = Cn_b * b * (1.0 + Cn_ab * a) + Cn_da * da * _control_eff(a) \
+        + Cn_dr * dr * _control_eff(a)
+
+    return {
+        "CL": CL, "CD": CD, "CY": CY,
+        "Cl_roll": Cl_roll, "Cm_pitch": Cm, "Cn_yaw": Cn_yaw,
+    }
 
 
 def _coefs_for(case_meta: dict, defaults: dict) -> dict[str, float]:
@@ -52,19 +126,19 @@ def _coefs_for(case_meta: dict, defaults: dict) -> dict[str, float]:
       '(f)' columns  = full pressure+viscous value
     so CD total = Cd(f), CD_pressure = Cd, CD_viscous = Cd(f)-Cd.
     """
-    alpha = math.radians(float(case_meta.get("alpha_deg", 0.0)))
-    beta = math.radians(float(case_meta.get("beta_deg", 0.0)))
-    CL_a, CL_0 = 2.0 * math.pi / 6.0, 0.05          # ~ per rad slope / offset
-    CD_0, k = 0.020, 0.045
-    Cm_0, Cm_a = -0.010, -0.30                     # stable: dCm/dalpha < 0
-    CY_b, Cl_b, Cn_b = 0.15, 0.12, 0.06
-
-    CL = CL_a * alpha + CL_0
-    CD = CD_0 + k * CL * CL
-    Cm = Cm_0 + Cm_a * alpha
-    CY = CY_b * beta
-    Cl_roll = Cl_b * beta
-    Cn_yaw = Cn_b * beta
+    coeffs = model_coefficients(
+        case_meta.get("alpha_deg", 0.0),
+        case_meta.get("beta_deg", 0.0),
+        case_meta.get("delta_e_deg", 0.0),
+        case_meta.get("delta_a_deg", 0.0),
+        case_meta.get("delta_r_deg", 0.0),
+    )
+    CL = coeffs["CL"]
+    CD = coeffs["CD"]
+    Cm = coeffs["Cm_pitch"]
+    CY = coeffs["CY"]
+    Cl_roll = coeffs["Cl_roll"]
+    Cn_yaw = coeffs["Cn_yaw"]
     # synthetic split: 10% of CD/CL is viscous (0 => 100% pressure)
     visc_frac = 0.10
     return {
@@ -192,7 +266,8 @@ def main() -> None:
 
     fc_root = ROOT / "raw" / "forceCoeffs"
     f_root = ROOT / "raw" / "forces"
-    for case in matrix.get("cases", []):
+    cases = resolve_cases(matrix)
+    for case in cases:
         meta = dict(defaults.get("reference", {}))
         meta.update(case)
         fc = _coefs_for(case, defaults)
@@ -200,7 +275,7 @@ def main() -> None:
         _write_force_coeffs(fc_root / case["id"] / "coefficient.dat", fc)
         F, M = _force_vectors(fc, meta, defaults, geometry)
         _write_forces(f_root / case["id"] / "forces.dat", F, M)
-    print(f"wrote sample data for {len(matrix.get('cases', []))} cases -> raw/")
+    print(f"wrote sample data for {len(cases)} cases -> raw/")
 
 
 if __name__ == "__main__":

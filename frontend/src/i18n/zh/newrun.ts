@@ -155,6 +155,19 @@ export const newrun: Record<string, string> = {
   "newrun.meshQuality": "网格质量",
   "newrun.meshSweepQualityNote": "由网格扫描决定：先粗，再按需中、细",
 
+  // 模式切换（单算例 vs 多维程序）。
+  "newrun.modeSingle": "单算例",
+  "newrun.modeProgram": "多维程序",
+  "newrun.modeHint": "单算例求解单个姿态——程序则把扫描维度的每种组合各展开为一个算例",
+
+  // F-16 构建包络预设（与 JSBSim 气动表一致的确切数值）。
+  "newrun.presetSection": "F-16 构建包络预设",
+  "newrun.presetAlpha": "α −10…45° /5°",
+  "newrun.presetBeta": "β ±30° /5°",
+  "newrun.presetDeltaE": "δe −25…25° /12.5°",
+  "newrun.presetDeltaA": "δa −25…25° /12.5°",
+  "newrun.presetDeltaR": "δr −25…25° /12.5°",
+
   // Run button + footer.
   "newrun.btnStarting": "正在启动…",
   "newrun.btnMeshSweep": "运行网格无关性扫描",

@@ -10,11 +10,15 @@ UNIT_SCALE = {"mm": 0.001, "cm": 0.01, "m": 1.0, "in": 0.0254}
 
 
 def prepare_stl(stl_path: str, unit: str, yaw_deg: float, out_path: str,
-                pitch_deg: float = 0.0, roll_deg: float = 0.0) -> dict:
+                pitch_deg: float = 0.0, roll_deg: float = 0.0,
+                deflections: list[dict] | None = None) -> dict:
     """Load an STL, scale to meters, center bbox at origin, rotate the model
     (roll about X, then pitch about Y, then -yaw about Z; wind stays along +X),
     save a binary STL at out_path. Positive pitch = nose-down (forward-flight
-    tilt). Returns model metadata (SI units)."""
+    tilt). Optional `deflections` rotate rigid connected components about hinge
+    lines (see _apply_deflections) after the orientation chain, so hinge
+    coordinates are given in the oriented, centered frame. Returns model
+    metadata (SI units)."""
     scale = UNIT_SCALE[unit]
     mesh = trimesh.load(stl_path, file_type="stl", force="mesh")
     if mesh.is_empty or len(mesh.faces) == 0:
@@ -52,6 +56,12 @@ def prepare_stl(stl_path: str, unit: str, yaw_deg: float, out_path: str,
         c2 = [float(v) for v in center]
         mesh.apply_translation(-center)
 
+    # v10 control-surface deflections: hinged all-moving parts (e.g. a
+    # stabilator) rotate rigidly about their hinge line, in the oriented,
+    # centered frame the hinge coordinates above were given in.
+    if deflections:
+        mesh = _apply_deflections(mesh, deflections)
+
     mesh.export(out_path, file_type="stl")  # binary STL
 
     bbox = mesh.bounds  # (2, 3)
@@ -70,6 +80,61 @@ def prepare_stl(stl_path: str, unit: str, yaw_deg: float, out_path: str,
         "_c1": c1,
         "_c2": c2,
     }
+
+
+def _apply_deflections(mesh: trimesh.Trimesh,
+                       deflections: list[dict]) -> trimesh.Trimesh:
+    """Rotate selected connected components rigidly about hinge lines.
+
+    Each spec is {"body": int | None, "axis": [x,y,z], "point": [x,y,z],
+    "angle_deg": float}. With an int `body`, the component at that split()
+    index rotates. With `body: None`, every component whose centroid lies on
+    the "downstream" side of the hinge plane rotates —
+    dot(centroid - point, axis) > 0 — which is the all-moving-surface
+    semantics (the part of the model the hinge swings away from its mount).
+
+    A deflection is a rigid-body rotation (trimesh's rotation_matrix about the
+    hinge line through `point` along `axis`), so each rotated component stays a
+    closed shell and the reassembled mesh is still watertight. Real-world
+    caveat: rotating a connected component about a hinge that sits away from
+    its interface to the rest of the model leaves a small gap / overlap at the
+    mount — physically the same as a stabilator's hinge gap — which the mesh
+    build and solver absorb.
+    """
+    parts = mesh.split(only_watertight=False)
+    n = len(parts)
+    rotated = False
+    for spec in deflections:
+        body = spec.get("body")
+        axis = np.asarray(spec["axis"], dtype=float)
+        norm = float(np.linalg.norm(axis))
+        if norm == 0:
+            raise ValueError("deflection axis must be non-zero")
+        axis = axis / norm
+        point = np.asarray(spec["point"], dtype=float)
+        angle_deg = float(spec["angle_deg"])
+        if body is None:
+            chosen = [i for i, p in enumerate(parts)
+                      if np.dot(p.centroid - point, axis) > 0]
+        else:
+            if not (isinstance(body, int) and not isinstance(body, bool)
+                    and 0 <= body < n):
+                raise ValueError(
+                    f"deflection body must be a component index in [0, {n}) "
+                    f"or null, got {body!r}")
+            chosen = [int(body)]
+        if not chosen:
+            continue
+        rot = trimesh.transformations.rotation_matrix(
+            math.radians(angle_deg), axis, point)
+        for i in chosen:
+            parts[i] = parts[i].apply_transform(rot)
+        rotated = True
+    if not rotated:
+        return mesh  # nothing selected: leave the prepared mesh untouched
+    if n == 1:
+        return parts[0]
+    return trimesh.util.concatenate(parts)
 
 
 def symmetry_error_y(mesh) -> float:

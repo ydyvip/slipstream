@@ -15,32 +15,51 @@ property_map:
   cbar:  "metrics/cbarw-ft"
   alpha: "aero/alpha-rad"
   beta:  "aero/beta-rad"
+  delta_e: "aero/delta-e-rad"
+  delta_a: "aero/delta-a-rad"
+  delta_r: "aero/delta-r-rad"
 
 # Output axes, in emission order. factors = geometry properties multiplied with
 # qbar (SI->Imperial handled by generate_jsbsim_xml.py via unit conversion).
+#
+# 2D table layout per axis (drives fit_aero_tables + generate_jsbsim_xml):
+#   row_var = outer independent var (defaults to independent_var)
+#   col_var = inner independent var (omitted -> axis stays 1D)
+#   DRAG/LIFT/PITCH -> (alpha, delta_e); SIDE/ROLL/YAW -> (alpha, beta)
+# When the case matrix only spans a single value of col_var (or has no
+# grids), the fitter falls back to the 1D table over independent_var.
 axes:
   DRAG:
     independent_var: "alpha"
+    col_var: "delta_e"
     factors: ["qbar", "Sw"]
     output_units: "lbf"
   SIDE:
     independent_var: "beta"
+    row_var: "alpha"
+    col_var: "beta"
     factors: ["qbar", "Sw"]
     output_units: "lbf"
   LIFT:
     independent_var: "alpha"
+    col_var: "delta_e"
     factors: ["qbar", "Sw"]
     output_units: "lbf"
   PITCH:
     independent_var: "alpha"
+    col_var: "delta_e"
     factors: ["qbar", "Sw", "cbar"]
     output_units: "lbf-ft"
   YAW:
     independent_var: "beta"
+    row_var: "alpha"
+    col_var: "beta"
     factors: ["qbar", "Sw", "bw"]
     output_units: "lbf-ft"
   ROLL:
     independent_var: "beta"
+    row_var: "alpha"
+    col_var: "beta"
     factors: ["qbar", "Sw", "bw"]
     output_units: "lbf-ft"
 

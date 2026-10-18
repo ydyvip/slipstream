@@ -81,6 +81,40 @@ export function sweepToCsv(
   return `${header}\n${body}\n`;
 }
 
+/** A test-program group's members as a full matrix CSV (dims + results). */
+export function matrixToCsv(
+  members: (
+    | GroupMember
+    | (GroupMember & {
+        alpha_deg?: number | null;
+        beta_deg?: number | null;
+        delta_e_deg?: number | null;
+        delta_a_deg?: number | null;
+        delta_r_deg?: number | null;
+      })
+  )[],
+): string {
+  const header =
+    "alpha_deg,beta_deg,delta_e_deg,delta_a_deg,delta_r_deg,cd,cl,l_over_d,drag_N,lift_N";
+  const body = members
+    .map((m) =>
+      [
+        m.alpha_deg ?? "",
+        m.beta_deg ?? "",
+        m.delta_e_deg ?? "",
+        m.delta_a_deg ?? "",
+        m.delta_r_deg ?? "",
+        num(m.cd),
+        num(m.cl),
+        num(liftToDrag(m.cl, m.cd)),
+        num(m.drag_N),
+        num(m.lift_N),
+      ].join(","),
+    )
+    .join("\n");
+  return `${header}\n${body}\n`;
+}
+
 export function slugify(s: string): string {
   return s.replace(/[^\w.-]+/g, "_").replace(/^_+|_+$/g, "") || "run";
 }

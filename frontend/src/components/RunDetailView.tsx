@@ -14,6 +14,7 @@ import { LineChart } from "./LineChart";
 import { ResultsPanel } from "./ResultsPanel";
 import { ResultViewer } from "./ResultViewer";
 import { SweepPanel } from "./SweepPanel";
+import { MatrixPanel } from "./MatrixPanel";
 
 interface Props {
   id: string;
@@ -306,13 +307,20 @@ export function RunDetailView({
 
       <Stepper status={run.status} progress={run.progress} message={run.message} />
 
-      {run.group_id && (
-        <SweepPanel
-          groupId={run.group_id}
-          activeRunId={id}
-          onSelectRun={onSelectRun}
-        />
-      )}
+      {run.group_id &&
+        (run.config.case_matrix ? (
+          <MatrixPanel
+            groupId={run.group_id}
+            activeRunId={id}
+            onSelectRun={onSelectRun}
+          />
+        ) : (
+          <SweepPanel
+            groupId={run.group_id}
+            activeRunId={id}
+            onSelectRun={onSelectRun}
+          />
+        ))}
 
       {run.status === "done" && run.result && (
         <>

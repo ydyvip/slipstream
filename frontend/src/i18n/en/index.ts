@@ -6,6 +6,7 @@ import { compare } from "./compare";
 import { mesh } from "./mesh";
 import { lib } from "./lib";
 import { extras } from "./extras";
+import { program } from "./program";
 
 /** Flat key → English message. `t()` falls back to this when a lang key is missing. */
 export const en: Record<string, string> = {
@@ -17,4 +18,5 @@ export const en: Record<string, string> = {
   ...mesh,
   ...lib,
   ...extras,
+  ...program,
 };

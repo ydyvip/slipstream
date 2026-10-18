@@ -17,6 +17,25 @@ export type RunStatus =
 export type StlUnit = "mm" | "cm" | "m" | "in";
 export type Quality = "coarse" | "medium" | "fine";
 
+/**
+ * v10: multi-dimensional test program. Each non-empty list is a sweep
+ * dimension (degrees); the run fans out into one run per combination of the
+ * Cartesian product of the provided dims, sharing a fresh group_id. Missing
+ * dims are treated as a constant 0 for that member.
+ */
+export interface CaseMatrixConfig {
+  /** Angle of attack. */
+  alpha_deg?: number[];
+  /** Sideslip. */
+  beta_deg?: number[];
+  /** Elevator deflection. */
+  delta_e_deg?: number[];
+  /** Aileron deflection. */
+  delta_a_deg?: number[];
+  /** Rudder deflection. */
+  delta_r_deg?: number[];
+}
+
 /** Config JSON string posted with the STL (POST /api/runs). */
 export interface RunConfig {
   name: string;
@@ -103,6 +122,12 @@ export interface RunConfig {
   mesh_from?: string;
   /** v8.2: original run name that re-solve names are built from. */
   resolve_base_name?: string;
+  /**
+   * v10: multi-dimensional test program (see CaseMatrixConfig). Mutually
+   * exclusive with the single-axis sweeps (yaw_sweep/pitch_sweep/mesh_sweep)
+   * and trim; the backend fans one run out per Cartesian-product combination.
+   */
+  case_matrix?: CaseMatrixConfig;
 }
 
 /** Role of a boundary patch in an imported mesh. */
@@ -239,11 +264,14 @@ export interface RunSummary {
 /**
  * POST /api/runs response. Plain runs return just `id`; a yaw sweep also
  * carries the shared `group_id` and all member `ids` (`id` = first member).
+ * A case-matrix program returns `{id, group_id, ids, kind: "matrix"}`.
  */
 export interface CreateRunResponse {
   id: string;
   group_id?: string;
   ids?: string[];
+  /** "matrix" when the run was a multi-dim case-matrix program. */
+  kind?: string;
 }
 
 export interface ModelInfo {
@@ -415,6 +443,18 @@ export interface GroupMember {
   quality?: Quality;
   /** v8: cell count once done. */
   mesh_cells?: number | null;
+  /** v10: matrix members carry their point in the program (null when absent). */
+  kind?: string;
+  /** Angle of attack, degrees. */
+  alpha_deg?: number | null;
+  /** Sideslip, degrees. */
+  beta_deg?: number | null;
+  /** Elevator deflection, degrees. */
+  delta_e_deg?: number | null;
+  /** Aileron deflection, degrees. */
+  delta_a_deg?: number | null;
+  /** Rudder deflection, degrees. */
+  delta_r_deg?: number | null;
 }
 
 /** v8: one finished step of a mesh-independence sweep. */
@@ -471,7 +511,7 @@ export interface GroupDetail {
   /** Which angle the sweep varies; "yaw" for pre-v2.1 groups. */
   param?: "yaw" | "pitch" | "quality";
   /** v3.1: "trim" for trim-solver groups (members are iterations). */
-  kind?: "sweep" | "trim" | "mesh";
+  kind?: "sweep" | "trim" | "mesh" | "matrix";
   wind_speed: number;
   quality: Quality;
   runs: GroupMember[];

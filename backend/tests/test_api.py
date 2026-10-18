@@ -482,3 +482,121 @@ def test_props_are_refused_with_a_compressible_model(monkeypatch):
                      "flow_model": "transonic", "props": PROPS})
     assert res.status_code == 422
     assert "constant density" in res.json()["detail"]
+
+
+# -- v10 case_matrix test program ----------------------------------------------
+
+def _post_matrix(monkeypatch, cfg):
+    """Post a run config, capturing (never queuing) the fanned-out children."""
+    import json as _json
+    monkeypatch.setattr(main.foamenv, "find_openfoam",
+                        lambda: "/opt/homebrew/bin/openfoam")
+    submitted = []
+    monkeypatch.setattr(main, "_submit_run",
+                        lambda data, cfg, group_id=None: submitted.append(cfg)
+                        or f"m{len(submitted)}")
+    with open(SPHERE, "rb") as fh:
+        res = client.post("/api/runs", files={"stl": ("s.stl", fh, "model/stl")},
+                          data={"config": _json.dumps(cfg)})
+    return res, submitted
+
+
+@pytest.mark.parametrize("extra, fragment", [
+    ({"case_matrix": {}}, "at least one sweep dim"),
+    ({"case_matrix": [0, 15]}, "case_matrix must be an object"),
+    ({"case_matrix": {"alpha_deg": []}}, "alpha_deg must be a non-empty list"),
+    ({"case_matrix": {"alpha_deg": "0,15"}}, "alpha_deg must be a non-empty list"),
+    ({"case_matrix": {"alpha_deg": [0, float("nan")]}},
+     "alpha_deg must be a non-empty list"),
+    ({"case_matrix": {"foo_deg": [0]}}, "unknown dims"),
+    ({"case_matrix": {"alpha_deg": [0, 15]}, "yaw_sweep": [0, 30]},
+     "cannot be combined"),
+    ({"case_matrix": {"alpha_deg": [0, 15]}, "pitch_sweep": [0, 30]},
+     "cannot be combined"),
+    ({"case_matrix": {"alpha_deg": [0, 15]}, "mesh_sweep": True},
+     "cannot be combined"),
+    ({"case_matrix": {"alpha_deg": [0, 15]}, "trim": {"weight_g": 700}},
+     "cannot be combined"),
+    ({"case_matrix": {"alpha_deg": [0] * 10, "beta_deg": [0] * 10,
+                      "delta_e_deg": [0] * 10}}, "over the 200-run cap"),
+])
+def test_case_matrix_validation(monkeypatch, extra, fragment):
+    cfg = {"unit": "mm", "wind_speed": 15, "quality": "coarse", **extra}
+    if "trim" in extra:
+        cfg["props"] = [{"center": [0, 0, 0], "diameter": 127, "thrust_g": 200}]
+    res, submitted = _post_matrix(monkeypatch, cfg)
+    assert res.status_code == 422, res.text
+    assert fragment in res.json()["detail"]
+    assert not submitted
+
+
+def test_case_matrix_fans_out_one_run_per_combination(monkeypatch):
+    cfg = {"name": "tail", "unit": "mm", "wind_speed": 15, "quality": "coarse",
+           "case_matrix": {"alpha_deg": [0, 5], "beta_deg": [-2, 0, 4],
+                           "delta_e_deg": [-8, 0]}}
+    res, submitted = _post_matrix(monkeypatch, cfg)
+    assert res.status_code == 201, res.text
+    body = res.json()
+    assert body["kind"] == "matrix"
+    assert len(body["group_id"]) == 32 and len(body["ids"]) == 12
+    assert len(submitted) == 12
+    # alpha is the slowest dim, delta_e the fastest; alpha -> pitch, beta -> yaw,
+    # the deflection passes through verbatim.
+    assert submitted[0]["pitch_deg"] == 0.0
+    assert submitted[0]["yaw_deg"] == -2.0
+    assert submitted[0]["delta_e_deg"] == -8.0
+    assert submitted[1]["delta_e_deg"] == 0.0
+    assert submitted[6]["pitch_deg"] == 5.0
+    assert all(c["sweep_param"] == "matrix" for c in submitted)
+    assert all("case_matrix" in c for c in submitted)
+    assert submitted[0]["name"] == "tail a0 b-2 e-8"
+    assert submitted[1]["name"] == "tail a0 b-2 e0"
+    assert submitted[12 - 1]["name"] == "tail a5 b4 e0"
+
+
+def test_case_matrix_group_reports_metadata_sorted(monkeypatch):
+    import json as _json
+    monkeypatch.setattr(main.foamenv, "find_openfoam",
+                        lambda: "/opt/homebrew/bin/openfoam")
+    submitted = []
+    monkeypatch.setattr(main, "_submit_run",
+                        lambda data, cfg, group_id=None: submitted.append(cfg)
+                        or f"m{len(submitted)}")
+    cfg = {"name": "tail", "unit": "mm", "wind_speed": 15, "quality": "coarse",
+           "case_matrix": {"alpha_deg": [0, 5], "beta_deg": [-2, 0, 4],
+                           "delta_e_deg": [-8, 0]}}
+    with open(SPHERE, "rb") as fh:
+        res = client.post("/api/runs", files={"stl": ("s.stl", fh, "model/stl")},
+                          data={"config": _json.dumps(cfg)})
+    assert res.status_code == 201, res.text
+    gid = res.json()["group_id"]
+    made = []
+    for i, child in enumerate(submitted):  # group endpoint reads live state
+        rid = f"m{i}"
+        main.runner.states[rid] = {
+            "id": rid, "name": child["name"], "status": "done", "progress": 1.0,
+            "message": "Done", "created_at": float(i), "config": child,
+            "group_id": gid, "model": None, "mesh_cells": 1000,
+            "result": {"cd": 0.01 * i, "drag_N": 0.01 * i}, "error": None,
+            "log": None}
+        made.append(rid)
+    try:
+        g = client.get(f"/api/groups/{gid}").json()
+        assert g["kind"] == "matrix" and g["name"] == "tail"
+        assert g["param"] == "matrix"
+        assert len(g["runs"]) == 12
+
+        def _k(v):  # absent dims (None) sort first
+            return float("-inf") if v is None else float(v)
+
+        keys = [(_k(r["alpha_deg"]), _k(r["beta_deg"]), _k(r["delta_e_deg"]),
+                 _k(r["delta_a_deg"]), _k(r["delta_r_deg"])) for r in g["runs"]]
+        assert keys == sorted(keys)
+        first = g["runs"][0]
+        assert (first["alpha_deg"], first["beta_deg"], first["delta_e_deg"]) \
+            == (0, -2, -8)
+        assert first["delta_a_deg"] is None and first["delta_r_deg"] is None
+    finally:
+        for rid in made:
+            main.runner.states.pop(rid, None)
+

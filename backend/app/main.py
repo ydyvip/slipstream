@@ -18,6 +18,7 @@ from starlette.concurrency import run_in_threadpool
 import trimesh
 
 from . import foamcase, foamenv, geometry, mesh, meshimport, ondemand, post, repair, trim
+from . import matrix as matrix_program
 from . import props as prop_detect
 from .runner import Runner
 
@@ -49,6 +50,20 @@ def _get_state(run_id: str) -> dict:
     if state is None:
         raise HTTPException(404, "run not found")
     return state
+
+
+# Sort key for a matrix-group member: (alpha, beta, delta_e, delta_a,
+# delta_r) ascending — the wind-tunnel sweep order. Absent dims (None) sort
+# first, so a program that doesn't sweep e.g. beta groups every beta=0 member
+# together instead of dropping them to the end.
+_MATRIX_AXES = ("alpha_deg", "beta_deg", "delta_e_deg", "delta_a_deg",
+                "delta_r_deg")
+
+
+def _matrix_order(s: dict) -> tuple:
+    cfg = s["config"]
+    return tuple(float(cfg.get(key)) if cfg.get(key) is not None else float("-inf")
+                 for key in _MATRIX_AXES)
 
 
 @app.get("/api/health")
@@ -227,6 +242,32 @@ async def create_run(stl: UploadFile, config: str = Form(...)):
     if not (_num(roll) and -180 <= roll <= 180):
         raise HTTPException(422, "roll_deg must be a number in [-180, 180]")
 
+    # v10 all-moving control surfaces: rigid component rotations about hinge
+    # lines, applied by geometry.prepare_stl after the attitude chain. Body is
+    # the split() component index, or null to rotate every component on the
+    # "downstream" side of the hinge plane (dot(centroid - point, axis) > 0).
+    deflections = cfg.get("deflections")
+    if deflections is not None:
+        ok = (isinstance(deflections, list) and all(
+            isinstance(d, dict)
+            and (d.get("body") is None or (isinstance(d.get("body"), int)
+                                           and not isinstance(d.get("body"), bool)))
+            and isinstance(d.get("axis"), list) and len(d["axis"]) == 3
+            and all(_num(v) for v in d["axis"])
+            and any(v != 0 for v in d["axis"])
+            and isinstance(d.get("point"), list) and len(d["point"]) == 3
+            and all(_num(v) for v in d["point"])
+            and _num(d.get("angle_deg"))
+            for d in deflections))
+        if not ok:
+            raise HTTPException(
+                422, "deflections must be a list of {body:int|null, "
+                     "axis:[x,y,z], point:[x,y,z], angle_deg} hinge specs (in "
+                     "the oriented, centered frame) — deflections 必须是铰链规格"
+                     "对象数组 {body(整数或null), axis, point, angle_deg}")
+        if not deflections:
+            cfg.pop("deflections")
+
     ref = cfg.get("ref_area_cm2")
     if ref is not None and not (_num(ref) and ref > 0):
         raise HTTPException(422, "ref_area_cm2 must be a positive number (cm^2)")
@@ -340,6 +381,57 @@ async def create_run(stl: UploadFile, config: str = Form(...)):
             raise HTTPException(
                 422, "mesh_sweep cannot be combined with a yaw/pitch sweep or trim")
 
+    # v10 multi-dimensional test program: a Cartesian product of sweeps over
+    # alpha / beta / control deflections, fanned out as one group. Any subset
+    # of the five dims is allowed, but at least one must be present and every
+    # present dim must be a non-empty list of finite degrees — the same
+    # per-case finite-number rule the yaw/pitch sweeps apply.
+    matrix = cfg.get("case_matrix")
+    if matrix is not None:
+        if not isinstance(matrix, dict):
+            raise HTTPException(
+                422, "case_matrix must be an object of sweep lists — "
+                     "case_matrix 必须是扫描维度数组构成的对象")
+        if sweeps or trim_req is not None or mesh_req is not None:
+            raise HTTPException(
+                422, "case_matrix cannot be combined with a yaw/pitch sweep, "
+                     "trim or mesh_sweep — case_matrix 不能与扫描/配平/网格扫描同时使用")
+        unknown = set(matrix) - set(matrix_program.MATRIX_KEYS)
+        if unknown:
+            raise HTTPException(
+                422, f"case_matrix has unknown dims: {', '.join(sorted(unknown))} "
+                     "(only alpha_deg / beta_deg / delta_e_deg / delta_a_deg / "
+                     "delta_r_deg) — case_matrix 含未知维度，仅支持 攻角/侧滑/舵偏 五个维度")
+        if not matrix:
+            raise HTTPException(
+                422, "case_matrix needs at least one sweep dim — "
+                     "case_matrix 至少需要一个扫描维度")
+        for key in matrix_program.MATRIX_KEYS:
+            values = matrix.get(key)
+            if values is None:
+                continue
+            if not (isinstance(values, list) and values and all(_num(v) for v in values)):
+                raise HTTPException(
+                    422, f"case_matrix.{key} must be a non-empty list of finite "
+                         f"numbers (degrees) — {key} 必须是非空有限数字（度）数组")
+        case_count = 1
+        for key in matrix_program.MATRIX_KEYS:
+            if key in matrix:
+                case_count *= len(matrix[key])
+        if case_count > matrix_program.MAX_MATRIX_MEMBERS:
+            raise HTTPException(
+                422, f"case_matrix expands to {case_count} runs, over the "
+                     f"{matrix_program.MAX_MATRIX_MEMBERS}-run cap — "
+                     f"case_matrix 展开为 {case_count} 个工况，超过上限 "
+                     f"{matrix_program.MAX_MATRIX_MEMBERS}")
+        # Half-model symmetry only works about the Y=0 mirror plane; a program
+        # that sweeps sideslip (beta) leaves it, exactly like a yaw sweep.
+        if (cfg.get("symmetry")
+                and any(float(v) != 0 for v in matrix.get("beta_deg", []))):
+            raise HTTPException(
+                422, "symmetry cannot be combined with a case_matrix that "
+                     "sweeps beta (sideslip) — 半模型对称不能与侧滑/偏航矩阵同时使用")
+
     # Half-model symmetry only makes sense for a left-right-symmetric setup:
     # 0° yaw, 0° roll, no yaw sweep, no props, no trim. Pitch (about Y)
     # preserves the left-right symmetry, so pitch_deg / pitch_sweep are
@@ -366,6 +458,13 @@ async def create_run(stl: UploadFile, config: str = Form(...)):
         cfg["trim"] = {"weight_g": float(trim_req["weight_g"]),
                        "max_iters": mi, "tol_deg": float(td)}
         return _submit_trim(data, cfg)
+
+    if matrix is not None:
+        # Canonical key order (alpha, beta, delta_e, delta_a, delta_r) so the
+        # marker on each child doubles as the group's dimension metadata.
+        matrix = {key: list(matrix[key]) for key in matrix_program.MATRIX_KEYS
+                  if key in matrix}
+        return _submit_matrix(data, cfg, matrix)
 
     if not sweeps:
         return {"id": _submit_run(data, cfg)}
@@ -451,6 +550,17 @@ def _submit_mesh_sweep(stl_bytes: bytes, cfg: dict) -> dict:
         base_cfg=cfg, group_id=group_id, first_run_id=first_id,
         summary_dir=DATA_DIR / first_id).start()
     return {"id": first_id, "group_id": group_id, "ids": [first_id]}
+
+
+def _submit_matrix(stl_bytes: bytes, cfg: dict, matrix: dict) -> dict:
+    """Submit one run per Cartesian-product combination of the case_matrix dims,
+    all sharing a fresh group_id — the v10 multi-dimensional test program.
+    Members run sequentially via the existing FIFO, exactly like a sweep."""
+    group_id = uuid.uuid4().hex
+    ids = []
+    for child_cfg in matrix_program.expand(matrix, cfg):
+        ids.append(_submit_run(stl_bytes, child_cfg, group_id=group_id))
+    return {"id": ids[0], "group_id": group_id, "ids": ids, "kind": "matrix"}
 
 
 @app.get("/api/runs")
@@ -761,7 +871,11 @@ def get_group(group_id: str):
     param = members[0]["config"].get("sweep_param", "yaw")
     is_trim = any(s["config"].get("trim") for s in members)
     is_mesh = any(s["config"].get("mesh_sweep") for s in members)
-    if is_trim or is_mesh:  # iterations in submission order, not angle order
+    # v10: the case_matrix marker on each child is what makes a group a matrix.
+    is_matrix = any(s["config"].get("case_matrix") for s in members)
+    if is_matrix:  # the program's wind-tunnel sweep order across all dims
+        members.sort(key=_matrix_order)
+    elif is_trim or is_mesh:  # iterations in submission order, not angle order
         members.sort(key=lambda s: s["created_at"])
     else:
         members.sort(key=lambda s: float(s["config"].get(f"{param}_deg") or 0))
@@ -770,7 +884,7 @@ def get_group(group_id: str):
     for s in members:
         result = s["result"] if s["status"] == "done" else None
         angle = s["config"].get(f"{param}_deg", 0)
-        runs.append({
+        entry = {
             "id": s["id"],
             "yaw_deg": s["config"].get("yaw_deg", 0),
             "angle": angle,
@@ -783,14 +897,31 @@ def get_group(group_id: str):
             "lift_N": result.get("lift_N") if result else None,
             "quality": s["config"].get("quality"),
             "mesh_cells": result.get("mesh_cells") if result else None,
-        })
-    # Members are named "<base> @ N°"; the group carries the base name.
-    name = first["name"].rsplit(" @ ", 1)[0]
+        }
+        if is_matrix:
+            # Each member's point in the program, parsed from its child config
+            # (null when that dim wasn't swept — i.e. a constant 0 for it).
+            entry["alpha_deg"] = s["config"].get("alpha_deg")
+            entry["beta_deg"] = s["config"].get("beta_deg")
+            entry["delta_e_deg"] = s["config"].get("delta_e_deg")
+            entry["delta_a_deg"] = s["config"].get("delta_a_deg")
+            entry["delta_r_deg"] = s["config"].get("delta_r_deg")
+        runs.append(entry)
+    # Members are named "<base> a0 b5 e-8" for a matrix; the suffix (present
+    # dims only) comes off to recover the base name the user typed.
+    if is_matrix:
+        matrix_suffix = matrix_program.name_suffix(first["config"])
+        name = (first["name"][: -len(matrix_suffix)]
+                if matrix_suffix and first["name"].endswith(matrix_suffix)
+                else first["name"].rsplit(" @ ", 1)[0])
+    else:
+        name = first["name"].rsplit(" @ ", 1)[0]
     out = {
         "group_id": group_id,
         "name": name,
         "param": param,
-        "kind": "trim" if is_trim else "mesh" if is_mesh else "sweep",
+        "kind": ("trim" if is_trim else "mesh" if is_mesh
+                 else "matrix" if is_matrix else "sweep"),
         "wind_speed": first["config"].get("wind_speed"),
         "quality": first["config"].get("quality"),
         "runs": runs,
@@ -940,7 +1071,7 @@ def rerun(run_id: str):
         raise HTTPException(410, "run inputs are no longer available")
     cfg = json.loads(cfg_path.read_text())
     # Strip group bookkeeping so it re-runs as a standalone run.
-    for k in ("sweep_param", "trim"):
+    for k in ("sweep_param", "trim", "case_matrix"):
         cfg.pop(k, None)
     if cfg.get("mesh_import"):
         mesh_src = rd / "mesh_import" / "constant" / "polyMesh"
@@ -1005,7 +1136,8 @@ async def resolve(run_id: str, request: Request):
                  "finished meshing, or compacted) - use Re-run to mesh again")
     rd = DATA_DIR / run_id
     cfg = json.loads((rd / "config.json").read_text())
-    for k in ("sweep_param", "trim", "mesh_sweep", "yaw_sweep", "pitch_sweep"):
+    for k in ("sweep_param", "trim", "mesh_sweep", "yaw_sweep", "pitch_sweep",
+              "case_matrix"):
         cfg.pop(k, None)
 
     ws = body.get("wind_speed", cfg["wind_speed"])

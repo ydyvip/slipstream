@@ -14,14 +14,14 @@ aero/
 │   ├── aircraft_geometry.yaml     参考面积/翼展/弦长、重心、飞行包线（SI）
 │   ├── coordinate_mapping.yaml    坐标系、符号约定、力矩参考点、FO 列映射
 │   ├── jsbsim_properties.yaml    JSBSim 属性映射、输出轴、系数→轴对应
-│   └── cfd_case_matrix.yaml      工况矩阵（alpha/beta 扫描）
+│   └── cfd_case_matrix.yaml      工况矩阵（alpha/beta/舵偏，支持 grids 展开）
 ├── raw/                           OpenFOAM 原始输出（按 case 分目录）
 │   ├── forceCoeffs/<case>/coefficient.dat
 │   └── forces/<case>/forces.dat
 ├── database/
 │   ├── aero_raw.csv               未经处理的原始量（含收敛信息/元数据）
 │   ├── aero_normalized.csv        归一化后的 SI 数据库（坐标/单位/力矩参考点统一）
-│   ├── aero_tables.json           拟合的 1D 气动表
+│   ├── aero_tables.json           拟合的 1D/2D 气动表（含舵面 build-up）
 │   └── metadata.json              生成元数据
 ├── src/                           工具链源码（每步一个模块，见下）
 │   └── geometry_ref.py            真实 CH-3 参考几何 + α/β→后端俯仰/偏航角映射
@@ -59,7 +59,7 @@ aero/
                               ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │ ③ 主流程：python aero/scripts/run_pipeline.py                       │
-│     → raw → DB（归一化/力矩参考点/坐标变换）→ 1D 表 → aerodynamics.xml│
+│     → raw → DB（归一化/力矩参考点/坐标变换）→ 1D/2D 表 → aerodynamics.xml│
 │       → 结构校验 + 回归对比报告                                      │
 └─────────────────────────────────────────────────────────────────────┘
                               │
@@ -77,8 +77,9 @@ aero/
 - `aircraft_geometry.yaml` — 参考面积/翼展/弦长、CofR、重心、飞行包线（SI）。
   本仓库填的是 CH-3 实测（S=6.6 m²、b=8 m、cbar=0.856 m），重心为翼 25% MAC
   估计值（`center_of_gravity_m: [-1.386, 0, 0]`，替换真实重心前请勿直接用于飞行仿真）。
-- `cfd_case_matrix.yaml` — 工况矩阵（alpha/beta 扫描）+ 统一来流条件。**case id
-  必须与 `raw/forceCoeffs/<id>/` 目录名一致**。
+- `cfd_case_matrix.yaml` — 工况矩阵（alpha/beta/舵偏扫描）+ 统一来流条件。也可用
+  `grids:` 块声明多根轴的笛卡尔积工况（自动展开成 case 列表，未扫的舵偏默认 0）。
+  **case id 必须与 `raw/forceCoeffs/<id>/` 目录名一致**。
 - `coordinate_mapping.yaml` — 坐标系旋转、符号约定、力矩参考点、FO 列映射
   （v2512 列语义，见下）。
 
@@ -150,7 +151,8 @@ python aero/scripts/run_pipeline.py --generate-raw
 cd aero && python -m pytest -q tests
 ```
 
-- 纯 Python 跑，不需要 OpenFOAM；38 个用例全绿（最新实测）。
+- 纯 Python 跑，不需要 OpenFOAM；59 个用例全绿（最新实测，含 `test_2d_buildup.py`
+  端到端覆盖 grid 展开/2D 拟合/舵面 build-up/XML 结构/回归对比）。
 - 测试里 `conftest.py` 的 pipeline fixture 用 `--generate-raw` 生成合成数据，
   所以**每次跑测试都会覆盖 `raw/` 与派生产物**。跑完若要保持真实数据，
   重跑 `run_real_cases.py --all` 即可（或跑测试前备份 `raw/`）。
@@ -168,8 +170,8 @@ cd aero && python -m pytest -q tests
 | 2. 解析 `forces` 输出 | `parse_forces.py` | `forces.dat` → 有量纲力/力矩（CofR，CFD 系） |
 | 3. 坐标变换 + 力矩参考点 | `transform_coordinates.py` | CFD 系 → aero 系；CofR → CG（`M_C = M_O − (r_C − r_O) × F`） |
 | 4. 归一化 | `normalize_coefficients.py` | → `aero_normalized.csv`（CD/CY/CL/Cl_roll/Cm_pitch/Cn_yaw） |
-| 5. 拟合 1D 表 | `fit_aero_tables.py` | → `aero_tables.json`（alpha 轴取 beta=0 干净扫描，反之亦然） |
-| 6. 生成 XML | `generate_jsbsim_xml.py` | → `generated/aerodynamics.xml`（表格每行 x y 单独一行，JSBSim 1D row-lookup 可解析） |
+| 5. 拟合 1D/2D 表 | `fit_aero_tables.py` | → `aero_tables.json`（1D：alpha/beta 干净扫描；2D：LIFT/DRAG/PITCH→(alpha,delta_e)、SIDE/ROLL/YAW→(alpha,beta)，横轴还附加 delta_a/delta_r 舵面影响项） |
+| 6. 生成 XML | `generate_jsbsim_xml.py` | → `generated/aerodynamics.xml`（1D 表格每行 x y 单独一行、row-lookup；2D 轴以 `<sum>` 输出 FGTable2 网格表——首行是列断点、后继行是行断点+各列值，断点为弧度） |
 | 7. 结构/物理校验 | `validate_tables.py` | NaN/Inf、断点单调、重复 case、包线覆盖 |
 | 8. 回归对比 | `compare_jsbsim_cfd.py` | → `reports/*`（JSBSim 查表 vs CFD 系数） |
 
@@ -179,6 +181,11 @@ cd aero && python -m pytest -q tests
   换算集中在 `src/_units.py`。数据库系数已是无量纲（按 q·S 及其参考长度归一）。
 - **"只乘一次"规则**：生成的 `<axis>` 函数 `力 = CL(α) · qbar_psf · Sw_sqft`，
   力矩再乘 `cbarw-ft`/`bw-ft`。系数已含归一化，绝不重复乘 q·S（`test_units.py` 兜底）。
+- **二维 build-up**：配了 `col_var` 的轴拟合 2D 面（纵轴 LIFT/DRAG/PITCH →
+  (alpha, delta_e)；横轴 SIDE/ROLL/YAW → (alpha, beta)），横轴另加 delta_a/delta_r
+  舵面效应项（中性态 1D 表）。XML 中 2D 轴以 `<sum>` 输出 FGTable2 网格表
+  （row+column 双查找、断点弧度），仍只做单次 qbar·Sw（·len）缩放，
+  `test_2d_buildup.py` 覆盖整条链路。
 - **命名风险（plan §1）**：OpenFOAM `forceCoeffs` 的 `Cl` 是**升力**系数；JSBSim
   的 `Cl` 习惯上是滚转力矩。一律按物理意义经 `jsbsim_properties.yaml` 的
   `table_to_axis` 映射（CL→LIFT、CD→DRAG、CY→SIDE、Cm_pitch→PITCH、
@@ -202,7 +209,7 @@ cd aero && python -m pytest -q tests
 | `aircraft_geometry.yaml` | S_ref / b / cbar、CofR、CG、envelope | 换真实机型的第一站 |
 | `coordinate_mapping.yaml` | rotation、sign、moment_reference、FO 列名映射（`force_coeffs_columns`）、forces 行布局 | 坐标系/符号/日志格式变化 |
 | `jsbsim_properties.yaml` | property_map、axes（独立变量+因子）、table_to_axis | 新气动轴 / 轴名调整 |
-| `cfd_case_matrix.yaml` | 工况矩阵 + 统一条件/参考值默认 | 加工况（alpha/beta/舵偏/速度） |
+| `cfd_case_matrix.yaml` | 工况矩阵（`cases:` + `grids:` 笛卡尔积展开）+ 统一条件/参考值默认 | 加工况（alpha/beta/舵偏/速度） |
 
 ## 限制与后续
 
@@ -217,5 +224,6 @@ cd aero && python -m pytest -q tests
   旧 API 分支。两者都没装时仅做 XML 结构校验。
 - **重心是估计值**：`center_of_gravity_m: [-1.386, 0, 0]` 取翼 25% MAC，
   未实测。把生成模型用于真实飞行仿真前，请用实测重心替换并重跑主流程。
-- **静态导数表**：动导数（Cq、Cp、依赖角速度的项）、舵面效率、螺旋桨滑流
-  耦合、动态失速属后续增量，当前生成稳态静导数表。
+- **静态导数表**：动导数（Cq、Cp、依赖角速度的项）、螺旋桨滑流耦合、动态失速
+  属后续增量。俯仰/滚转/偏航舵面（delta_e/delta_a/delta_r）已通过 2D build-up
+  建模（见「关键约定」）。
