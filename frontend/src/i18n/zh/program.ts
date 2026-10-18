@@ -4,7 +4,7 @@ export const program: Record<string, string> = {
   "program.title": "多维测试程序",
   "program.backToNew": "← 返回单算例",
   "program.note":
-    "对迎角 (α)、侧滑角 (β) 与舵面偏角 (δe / δa / δr) 定义扫描，并作为一个矩阵批次整体运行——每个组合都是同一组内的一个算例。",
+    "对迎角 (α)、侧滑角 (β) 与舵面偏角 (δe / δa / δr) 定义扫描，并作为一个矩阵程序整体运行——每个组合都是同一组内的一个算例。",
 
   // 第 1 步：模型与来流。
   "program.stepModel": "1 · 模型与来流",
@@ -27,7 +27,6 @@ export const program: Record<string, string> = {
   "program.estimate": "{n} 个算例",
   "program.estimateEq": "＝ 非空维度之积",
   "program.estimateWarn": " —— 这需要大量完整 CFD 求解",
-  "program.batchedNotice": "—— 将分批执行，每批最多 {cap} 个（共 {n} 批）",
   "program.starting": "正在启动…",
   "program.btnRun": "运行程序（{n} 个算例）",
   "program.startFailed": "启动程序失败：{msg}",
@@ -49,5 +48,4 @@ export const program: Record<string, string> = {
   "matrix.listHint": "无 α × β 网格——该程序仅扫描舵面偏角。",
   "matrix.deltaValue": "{mark} {deg}°",
   "matrix.caseLabel": "算例",
-  "matrix.partOf": "第 {n}/{total} 批",
 };

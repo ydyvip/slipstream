@@ -3,12 +3,14 @@
 A `case_matrix` config fans one POST /api/runs submit out into a group of runs,
 one per Cartesian-product combination of the swept dimensions (alpha / beta /
 control deflections), so a whole wind-tunnel-style test matrix runs as one
-batch. This generalises the existing one-axis yaw/pitch sweep mechanism: the
-sweep submits N runs along one axis; a matrix submits the full grid.
+program — a single group sharing one group_id and one program_id. This
+generalises the existing one-axis yaw/pitch sweep mechanism: the sweep submits
+N runs along one axis; a matrix submits the full grid.
 """
 from __future__ import annotations
 
 import itertools
+import os
 
 # Canonical dimension order. Each row is (case_matrix key, child config key,
 # name-suffix letter). alpha_deg maps to pitch_deg (angle of attack) and
@@ -26,18 +28,17 @@ DIMS = (
 )
 MATRIX_KEYS = tuple(d[0] for d in DIMS)
 
-# Program-level cap: the largest a whole case_matrix may fan out to, however
-# many batches it takes. It is a hard cap so a typo can't queue thousands of
-# solves.
-MAX_PROGRAM_MEMBERS = 500
-
-# A yaw/pitch sweep batches up to 8 members; a matrix programs a whole sweep
-# grid, so it gets a documented, looser ceiling that the frontend also warns at
-# (TestProgramView.CASE_CAP). It is still a hard cap so a typo can't queue
-# hundreds of solves. It also doubles as the chunk size: a program larger than
-# this is split into several ≤200-member batches (each its own group, all
-# sharing one program_id).
-MAX_MATRIX_MEMBERS = 200
+# Program-level cap: the largest a whole case_matrix may fan out to. It is a
+# hard cap so a typo can't queue thousands of solves. One program = one group
+# (every member is submitted together under a single group_id / program_id), so
+# this is an overall ceiling on that one group. Default 2000 admits a
+# 1125-point aero build-up out of the box; for full-scale databases (the F-16
+# envelope is 19500 points) raise with SLIPSTREAM_MAX_PROGRAM_MEMBERS — read at
+# import, so restart to apply.
+MAX_PROGRAM_MEMBERS = max(
+    8,
+    int(os.environ.get("SLIPSTREAM_MAX_PROGRAM_MEMBERS", "2000")),
+)
 
 
 def name_suffix(member_cfg: dict) -> str:

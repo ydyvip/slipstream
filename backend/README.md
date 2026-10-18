@@ -104,6 +104,23 @@ Notes:
   (default `opencfd/openfoam-default:latest`); `aero/scripts/run_real_cases.py`
   is a standalone driver that runs the same image directly.
 
+## Case-matrix programs and the run cap
+
+A `case_matrix` program fans one submission out to one run per combination of
+the swept dims (α, β, δe, δa, δr). One program is submitted as one group: every
+member shares a single `group_id` and one `program_id`; the sidebar shows the
+whole program as a single collapsed row and `GET /api/programs/{pid}`
+aggregates the entire grid.
+
+`MAX_PROGRAM_MEMBERS` (default **2000**) is the hard program-level cap. A
+1125-point build-up fits out of the box; for full-scale databases (the F-16
+build-up preset is 19500 points) raise it with the environment variable — it is
+read at import, so restart to apply:
+
+```powershell
+$env:SLIPSTREAM_MAX_PROGRAM_MEMBERS = "19500"
+```
+
 ## Data layout
 
 All run data lives on the filesystem under `backend/data/runs/<run_id>/`:

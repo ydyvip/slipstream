@@ -61,3 +61,45 @@ export function uniqueSorted(values: (number | null | undefined)[]): number[] {
     (a, b) => a - b,
   );
 }
+
+/** A run tagged with its case-matrix program (as delivered by GET /api/runs). */
+export interface ProgramTaggedRun {
+  id: string;
+  program_id: string | null;
+  program_name: string | null;
+}
+
+/** One collapsed sidebar group: program id/name plus its member runs. */
+export interface ProgramRunGroup<T extends ProgramTaggedRun> {
+  programId: string;
+  programName: string;
+  members: T[];
+}
+
+/**
+ * Partition runs tagged with a non-null program_id into collapsed groups,
+ * keeping each group where its first member appears in `runs` and members in
+ * their list order. Runs without a program_id are not grouped — callers render
+ * those as plain rows.
+ */
+export function groupProgramRuns<T extends ProgramTaggedRun>(
+  runs: readonly T[],
+): ProgramRunGroup<T>[] {
+  const groups: ProgramRunGroup<T>[] = [];
+  const byId = new Map<string, ProgramRunGroup<T>>();
+  for (const r of runs) {
+    if (r.program_id == null) continue;
+    let g = byId.get(r.program_id);
+    if (!g) {
+      g = {
+        programId: r.program_id,
+        programName: r.program_name ?? r.program_id,
+        members: [],
+      };
+      byId.set(r.program_id, g);
+      groups.push(g);
+    }
+    g.members.push(r);
+  }
+  return groups;
+}

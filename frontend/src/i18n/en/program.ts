@@ -4,7 +4,7 @@ export const program: Record<string, string> = {
   "program.title": "Multi-dimensional test program",
   "program.backToNew": "← back to single run",
   "program.note":
-    "Define sweeps over angle of attack (α), sideslip (β) and control deflections (δe / δa / δr), then run them all as one matrix batch — every combination becomes its own run in the same group.",
+    "Define sweeps over angle of attack (α), sideslip (β) and control deflections (δe / δa / δr), then run them all as one matrix program — every combination becomes its own run in the same group.",
 
   // Step 1: model & flow.
   "program.stepModel": "1 · Model & flow",
@@ -28,8 +28,6 @@ export const program: Record<string, string> = {
   "program.estimate": "{n} cases",
   "program.estimateEq": "= product of the non-empty dimensions",
   "program.estimateWarn": " — that's a lot of full CFD solves",
-  "program.batchedNotice":
-    " — will run in batches of up to {cap} ({n} batches)",
   "program.starting": "Starting…",
   "program.btnRun": "Run program ({n} cases)",
   "program.startFailed": "Failed to start the program: {msg}",
@@ -52,5 +50,4 @@ export const program: Record<string, string> = {
     "No α × β grid — this program sweeps only control deflections.",
   "matrix.deltaValue": "{mark} {deg}°",
   "matrix.caseLabel": "case",
-  "matrix.partOf": "part {n}/{total}",
 };

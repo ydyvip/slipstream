@@ -12,4 +12,10 @@ export const sidebar: Record<string, string> = {
   "sidebar.deleteRun": "删除算例",
   "sidebar.runId": "算例 ID {id}",
   "sidebar.cd": "Cd",
+  "sidebar.programDone": "{done}/{total}",
+  "sidebar.cancelAll": "取消全部",
+  "sidebar.deleteAll": "删除全部",
+  "sidebar.cancelProgramConfirm": "取消程序“{name}”的 {count} 个未完成算例？",
+  "sidebar.deleteProgramConfirm": "删除程序“{name}”的全部 {count} 个算例？此操作不可撤销。",
+  "sidebar.deleteProgramRunning": "仍有 {running} 个运行中的算例，已保留。",
 };

@@ -112,8 +112,8 @@ def storage():
         s.get("group_id") for s in states
         if s["status"] not in ("done", "error") and s.get("group_id")
     }
-    # So are programs: while any batch still runs, even already-done chunks of
-    # the same program_id must stay on disk for the aggregate view.
+    # So are programs: while any member still runs, even already-done members
+    # of the same program_id must stay on disk for the aggregate view.
     busy_programs = {
         s["config"].get("program_id") for s in states
         if s["status"] not in ("done", "error") and s["config"].get("program_id")
@@ -438,11 +438,9 @@ async def create_run(stl: UploadFile, config: str = Form(...)):
         if case_count > matrix_program.MAX_PROGRAM_MEMBERS:
             raise HTTPException(
                 422, f"case_matrix expands to {case_count} runs, over the "
-                     f"{matrix_program.MAX_PROGRAM_MEMBERS}-run cap (batched: "
-                     f"each batch is at most {matrix_program.MAX_MATRIX_MEMBERS} "
-                     f"runs) — case_matrix 展开为 {case_count} 个工况，超过上限 "
-                     f"{matrix_program.MAX_PROGRAM_MEMBERS}（分批执行，每批最多 "
-                     f"{matrix_program.MAX_MATRIX_MEMBERS} 个算例）")
+                     f"{matrix_program.MAX_PROGRAM_MEMBERS}-run cap — "
+                     f"case_matrix 展开为 {case_count} 个工况，超过上限 "
+                     f"{matrix_program.MAX_PROGRAM_MEMBERS}")
         # Half-model symmetry only works about the Y=0 mirror plane; a program
         # that sweeps sideslip (beta) leaves it, exactly like a yaw sweep.
         if (cfg.get("symmetry")
@@ -572,33 +570,34 @@ def _submit_mesh_sweep(stl_bytes: bytes, cfg: dict) -> dict:
 
 
 def _submit_matrix(stl_bytes: bytes, cfg: dict, matrix: dict) -> dict:
-    """Submit one run per Cartesian-product combination of the case_matrix dims,
-    sharing one program_id so the whole program is one viewable grid. A program
-    beyond MAX_MATRIX_MEMBERS splits into further ≤200-member batches, each
-    with its own group_id (members run sequentially via the existing FIFO, and
-    the group endpoint still works — the aggregate GET /api/programs/{pid}
-    view is what shows them all together)."""
+    """Submit one run per Cartesian-product combination of the case_matrix dims
+    as one group (all members share one group_id and one program_id), so the
+    whole program is a single viewable grid."""
     program_id = uuid.uuid4().hex
-    # expand() emits the product with the first dim slowest, so slicing keeps
-    # the global wind-tunnel order across batches — _matrix_order re-sorts and
-    # the rendered grid stays contiguous.
+    group_id = uuid.uuid4().hex
+    # expand() emits the product with the first dim slowest, so member order
+    # keeps the global wind-tunnel order — _matrix_order re-sorts and the
+    # rendered grid stays contiguous.
     expanded = list(matrix_program.expand(matrix, cfg))
-    batches = []
     ids = []
-    for start in range(0, len(expanded), matrix_program.MAX_MATRIX_MEMBERS):
-        chunk = expanded[start:start + matrix_program.MAX_MATRIX_MEMBERS]
-        gid = uuid.uuid4().hex
-        batch_index = start // matrix_program.MAX_MATRIX_MEMBERS
-        batch_count = math.ceil(len(expanded) / matrix_program.MAX_MATRIX_MEMBERS)
-        for child in chunk:
-            child["program_id"] = program_id
-            child["batch_index"] = batch_index
-            child["batch_count"] = batch_count
-            ids.append(_submit_run(stl_bytes, child, group_id=gid))
-        batches.append({"group_id": gid, "batch_index": batch_index})
-    return {"id": ids[0], "group_id": batches[0]["group_id"], "ids": ids,
-            "kind": "matrix", "program_id": program_id, "batches": batches,
-            "batch_count": batch_count, "total": len(expanded)}
+    for child in expanded:
+        child["program_id"] = program_id
+        ids.append(_submit_run(stl_bytes, child, group_id=group_id))
+    return {"id": ids[0], "group_id": group_id, "ids": ids,
+            "kind": "matrix", "program_id": program_id,
+            "total": len(expanded)}
+
+
+def _matrix_base_name(state: dict) -> str:
+    """Recover the program base name a matrix member was fanned out from,
+    stripping its " a0 b5 e-8" name suffix (present dims only) the exact same
+    way _matrix_payload() strips it for the program/group grid."""
+    cfg = state["config"]
+    suffix = matrix_program.name_suffix(cfg)
+    name = state["name"]
+    if suffix and name.endswith(suffix):
+        return name[:-len(suffix)]
+    return name.rsplit(" @ ", 1)[0]
 
 
 @app.get("/api/runs")
@@ -609,7 +608,15 @@ def list_runs():
          "wind_speed": s["config"].get("wind_speed"),
          "quality": s["config"].get("quality"),
          "group_id": s.get("group_id"),
-         "yaw_deg": s["config"].get("yaw_deg", 0)}
+         "yaw_deg": s["config"].get("yaw_deg", 0),
+         # v10.2: which case-matrix program a run belongs to (null for
+         # standalone/sweep runs) + the base name the user typed, so the
+         # sidebar can collapse a whole multi-hundred-run program into one row.
+         "program_id": s["config"].get("program_id"),
+         "program_name": (_matrix_base_name(s)
+                          if s["config"].get("program_id")
+                          or s["config"].get("case_matrix") else None),
+         }
         for s in runner.list()
     ]
 
@@ -904,8 +911,8 @@ def get_result(run_id: str):
 def _matrix_payload(members: list) -> tuple:
     """The member list + base name for a case-matrix group or program, in
     wind-tunnel order (alpha, beta, delta_e, delta_a, delta_r). Shared by
-    GET /api/groups/{id} and GET /api/programs/{pid} so a >200-member program
-    renders byte-for-byte like one single-batch group."""
+    GET /api/groups/{id} and GET /api/programs/{pid} so a program
+    renders byte-for-byte from the same member list."""
     members.sort(key=_matrix_order)
     first = members[0]
     runs = []
@@ -934,10 +941,7 @@ def _matrix_payload(members: list) -> tuple:
         runs.append(entry)
     # Members are named "<base> a0 b5 e-8" for a matrix; the suffix (present
     # dims only) comes off to recover the base name the user typed.
-    matrix_suffix = matrix_program.name_suffix(first["config"])
-    name = (first["name"][: -len(matrix_suffix)]
-            if matrix_suffix and first["name"].endswith(matrix_suffix)
-            else first["name"].rsplit(" @ ", 1)[0])
+    name = _matrix_base_name(first)
     return runs, name
 
 
@@ -989,17 +993,6 @@ def get_group(group_id: str):
         "quality": members[0]["config"].get("quality"),
         "runs": runs,
     }
-    # v10.1: a batched matrix program splits into several groups, all sharing
-    # one program_id. A single-batch group still works as before; it also says
-    # which batch it is so history cards read " · part 1/3".
-    if members[0]["config"].get("program_id"):
-        out["program_id"] = members[0]["config"]["program_id"]
-        out["batch_index"] = members[0]["config"].get("batch_index")
-        out["batch_count"] = members[0]["config"].get("batch_count")
-        if int(members[0]["config"].get("batch_count") or 1) > 1:
-            out["name"] = (f"{out['name']} · part "
-                           f"{int(members[0]['config'].get('batch_index') or 0) + 1}/"
-                           f"{members[0]['config']['batch_count']}")
     if is_trim:
         summary = None
         for s in members:
@@ -1029,28 +1022,16 @@ def get_group(group_id: str):
 
 @app.get("/api/programs/{program_id}")
 def get_program(program_id: str):
-    """Aggregate every batch of a case-matrix program (all runs sharing one
-    program_id) into a single /api/groups-shaped payload. A >200-member
-    program splits into several ≤200-member groups on submit; this endpoint
-    joins them so the frontend renders one contiguous grid, exactly like a
-    single-batch group."""
+    """Aggregate a case-matrix program (every run sharing one program_id)
+    into a single /api/groups-shaped payload. A program is one group, so this
+    is exactly the group grid — the frontend renders the contiguous grid
+    members in wind-tunnel order."""
     members = [s for s in runner.list()
                if s["config"].get("program_id") == program_id]
     if not members:
         raise HTTPException(404, "program not found")
     runs, name = _matrix_payload(members)
     first = members[0]
-    by_batch = {}
-    for s in members:
-        gid = s.get("group_id")
-        b = by_batch.setdefault(
-            gid, {"group_id": gid,
-                  "batch_index": int(s["config"].get("batch_index", 0)),
-                  "done": 0, "total": 0})
-        b["total"] += 1
-        if s["status"] in ("done", "error"):
-            b["done"] += 1
-    batches = sorted(by_batch.values(), key=lambda b: b["batch_index"])
     return {
         "program_id": program_id,
         "name": name,
@@ -1058,10 +1039,51 @@ def get_program(program_id: str):
         "wind_speed": first["config"].get("wind_speed"),
         "quality": first["config"].get("quality"),
         "runs": runs,
-        "batches": batches,
-        "batch_count": int(first["config"].get("batch_count", 1)),
         "total": len(members),
     }
+
+
+def _program_members(program_id: str) -> list[dict]:
+    """Every run belonging to a case-matrix program (all members of its one
+    group, by shared program_id)."""
+    members = [s for s in runner.list()
+               if s["config"].get("program_id") == program_id]
+    if not members:
+        raise HTTPException(404, "program not found")
+    return members
+
+
+@app.post("/api/programs/{program_id}/cancel")
+def cancel_program(program_id: str):
+    """Cancel every non-terminal member of a case-matrix program at once
+    (terminal members are skipped and reported). Semantics mirror
+    POST /api/runs/{id}/cancel per member."""
+    members = _program_members(program_id)
+    cancelled = 0
+    for s in members:
+        if runner.cancel(s["id"]):
+            cancelled += 1
+    return {"program_id": program_id, "cancelled": cancelled,
+            "skipped": len(members) - cancelled}
+
+
+@app.post("/api/programs/{program_id}/delete")
+def delete_program(program_id: str):
+    """Delete every member of a case-matrix program (files included). Members
+    still executing are kept and reported; semantics mirror
+    DELETE /api/runs/{id} per member."""
+    members = _program_members(program_id)
+    deleted = 0
+    running = 0
+    for s in members:
+        rid = s["id"]
+        if runner.is_active(rid):
+            running += 1
+            continue
+        if runner.delete(rid):
+            deleted += 1
+            shutil.rmtree(DATA_DIR / rid, ignore_errors=True)
+    return {"program_id": program_id, "deleted": deleted, "running": running}
 
 
 @app.get("/api/runs/{run_id}/stl")

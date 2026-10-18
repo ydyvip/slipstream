@@ -9,8 +9,8 @@ import { uniqueSorted } from "../lib/program";
 
 interface Props {
   groupId: string;
-  /** v10.1: when set, fetch the whole batched program via /api/programs/{pid}
-   * (all batches joined) instead of this group's single batch. */
+  /** v10.1: when set, fetch the whole program via /api/programs/{pid}
+   * (the aggregate view) instead of this group's members alone. */
   programId?: string;
   /** The member currently open in the detail view (highlighted, not clickable). */
   activeRunId: string;
@@ -120,18 +120,6 @@ export function MatrixPanel({ groupId, programId, activeRunId, onSelectRun }: Pr
           {t("sweep.metaSpeed", { speed: group.wind_speed })} ·{" "}
           {group.quality} ·{" "}
           {t("sweep.metaFinished", { settled, total: members.length })}
-          {group.batch_count != null &&
-            group.batch_count > 1 &&
-            group.batch_index != null && (
-              <>
-                {" "}
-                ·{" "}
-                {t("matrix.partOf", {
-                  n: group.batch_index + 1,
-                  total: group.batch_count,
-                })}
-              </>
-            )}
         </span>
         <button
           className="seg sweep-export"

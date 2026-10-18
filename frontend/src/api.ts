@@ -124,13 +124,9 @@ export interface RunConfig {
   resolve_base_name?: string;
   /**
    * v10.1: written by the backend onto every member of a case-matrix program —
-   * the program's shared id, plus which ≤200-member batch this member landed
-   * in and how many batches there are. Present only on members submitted after
-   * the batching change.
+   * the program's shared id.
    */
   program_id?: string;
-  batch_index?: number;
-  batch_count?: number;
   /**
    * v10: multi-dimensional test program (see CaseMatrixConfig). Mutually
    * exclusive with the single-axis sweeps (yaw_sweep/pitch_sweep/mesh_sweep)
@@ -268,14 +264,31 @@ export interface RunSummary {
   /** v2: set when the run belongs to a yaw sweep. */
   group_id: string | null;
   yaw_deg: number;
+  /** v10.2: set when the run is a member of a case-matrix program (null otherwise). */
+  program_id: string | null;
+  /** v10.2: base program name the user typed (e.g. "tail" for "tail a0 b-2 e-8"). */
+  program_name: string | null;
+}
+
+/** POST /api/programs/{pid}/cancel — how many members were cancelled. */
+export interface ProgramCancelResult {
+  program_id: string;
+  cancelled: number;
+  skipped: number;
+}
+
+/** POST /api/programs/{pid}/delete — deleted members, running ones kept. */
+export interface ProgramDeleteResult {
+  program_id: string;
+  deleted: number;
+  running: number;
 }
 
 /**
  * POST /api/runs response. Plain runs return just `id`; a yaw sweep also
  * carries the shared `group_id` and all member `ids` (`id` = first member).
- * A case-matrix program returns `{id, group_id, ids, kind: "matrix"}` plus,
- * since v10.1, the shared `program_id` and the `batches` it was split into
- * (≤200 members each) — single-batch programs still carry all of them.
+ * A case-matrix program returns `{id, group_id, ids, kind: "matrix",
+ * program_id, total}` — every member is one group under one program_id.
  */
 export interface CreateRunResponse {
   id: string;
@@ -283,20 +296,8 @@ export interface CreateRunResponse {
   ids?: string[];
   /** "matrix" when the run was a multi-dim case-matrix program. */
   kind?: string;
-  /** v10.1: shared by every batch of a case-matrix program. */
+  /** v10.1: shared by every member of a case-matrix program. */
   program_id?: string;
-  /** v10.1: the ≤200-member batches this program was split into. */
-  batches?: ProgramBatch[];
-  batch_count?: number;
-  total?: number;
-}
-
-/** v10.1: one ≤200-member chunk of a batched case-matrix program. */
-export interface ProgramBatch {
-  group_id: string;
-  batch_index: number;
-  /** Count of finished members; only on the aggregate program view. */
-  done?: number;
   total?: number;
 }
 
@@ -546,12 +547,9 @@ export interface GroupDetail {
   trim?: TrimSummary;
   /** v8: present for mesh-independence sweeps (partial while refining). */
   mesh?: MeshSweepSummary;
-  /** v10.1: set when the group is one batch of a batched program. */
+  /** v10.1: set when the group belongs to a case-matrix program. */
   program_id?: string;
-  batch_index?: number;
-  batch_count?: number;
-  /** v10.1: per-batch progress on the aggregate GET /api/programs/{pid} view. */
-  batches?: ProgramBatch[];
+  /** v10.1: member count; present on the aggregate GET /api/programs/{pid} view. */
   total?: number;
 }
 
@@ -758,9 +756,21 @@ export const api = {
     return getJson<GroupDetail>(`/groups/${groupId}`);
   },
 
-  /** v10.1: case-matrix program across all its batches — same shape as a group. */
+  /** v10.1: case-matrix program (every member sharing one program_id) — same shape as a group. */
   getProgram(programId: string): Promise<GroupDetail> {
     return getJson<GroupDetail>(`/programs/${programId}`);
+  },
+
+  /** v10.2: cancel every non-terminal member of a case-matrix program. */
+  async cancelProgram(programId: string): Promise<ProgramCancelResult> {
+    const res = await request(`/programs/${programId}/cancel`, { method: "POST" });
+    return (await res.json()) as ProgramCancelResult;
+  },
+
+  /** v10.2: delete every member of a case-matrix program (running ones kept). */
+  async deleteProgram(programId: string): Promise<ProgramDeleteResult> {
+    const res = await request(`/programs/${programId}/delete`, { method: "POST" });
+    return (await res.json()) as ProgramDeleteResult;
   },
 
   getLog(id: string, tail = 200): Promise<LogTail> {

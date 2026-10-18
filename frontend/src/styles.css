@@ -18,8 +18,8 @@
 
 .lang-toggle {
   position: fixed;
-  top: 26px;
-  right: 46px;
+  top: 14px;
+  left: 185px;
   z-index: 900;
   display: flex;
   align-items: stretch;
@@ -199,6 +199,92 @@ body {
   margin-left: auto;
   color: var(--muted);
   font-size: 11px;
+}
+
+/* v10.2: collapsed case-matrix program groups in the sidebar */
+
+.program-group {
+  margin-bottom: 4px;
+}
+
+.program-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.program-header:hover {
+  background: var(--panel-2);
+}
+
+.program-chevron {
+  font: inherit;
+  line-height: 1;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.12s ease;
+}
+
+.program-chevron-open {
+  transform: rotate(90deg);
+}
+
+.program-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.program-progress {
+  color: var(--muted);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.program-action-btn {
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  background: var(--panel-2);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.program-action-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.program-action-btn-danger:hover {
+  color: #f0b7b7;
+  border-color: #7a2f2f;
+}
+
+.program-members {
+  margin: 2px 0 4px 8px;
+  padding-left: 6px;
+  border-left: 1px solid var(--border);
+}
+
+.run-item-nested {
+  margin-bottom: 2px;
+  padding: 7px 8px;
 }
 
 /* ---------- buttons & pills ---------- */
@@ -532,7 +618,7 @@ body {
 /* ---------- run detail ---------- */
 
 .detail {
-  max-width: 1100px;
+  max-width: 100%;
 }
 
 .detail-loading {

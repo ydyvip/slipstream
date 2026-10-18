@@ -91,6 +91,43 @@ export default function App() {
     }
   }, []);
 
+  // v10.2: program-level cancel / delete for a collapsed case-matrix program.
+  const handleCancelProgram = useCallback(
+    async (programId: string, name: string, unfinished: number) => {
+      if (!window.confirm(t("sidebar.cancelProgramConfirm", { name, count: unfinished }))) return;
+      try {
+        await api.cancelProgram(programId);
+        setRefresh((n) => n + 1);
+      } catch (e) {
+        window.alert(t("app.deleteFailed", { msg: (e as Error).message }));
+      }
+    },
+    [t],
+  );
+
+  const handleDeleteProgram = useCallback(
+    async (programId: string, name: string, total: number) => {
+      if (!window.confirm(t("sidebar.deleteProgramConfirm", { name, count: total }))) return;
+      try {
+        const res = await api.deleteProgram(programId);
+        // Members still solving are kept — say so rather than hiding it.
+        if (res.running > 0) {
+          window.alert(t("sidebar.deleteProgramRunning", { running: res.running }));
+        }
+        setRoute((r) =>
+          r.view === "run" &&
+          list.data?.some((x) => x.id === r.id && x.program_id === programId)
+            ? { view: "new" }
+            : r,
+        );
+        setRefresh((n) => n + 1);
+      } catch (e) {
+        window.alert(t("app.deleteFailed", { msg: (e as Error).message }));
+      }
+    },
+    [t, list.data],
+  );
+
   // Warn if OpenFOAM isn't installed (fresh machines / packaged app).
   const [foamMissing, setFoamMissing] = useState(false);
   useEffect(() => {
@@ -141,6 +178,8 @@ export default function App() {
           onClearCompare={clearCompare}
           refreshKey={refresh}
           onPruned={() => setRefresh((n) => n + 1)}
+          onCancelProgram={handleCancelProgram}
+          onDeleteProgram={handleDeleteProgram}
         />
         <main className="main">
           {route.view === "new" && (
@@ -149,7 +188,7 @@ export default function App() {
                 setRefresh((n) => n + 1);
                 // v10.1: a matrix submit routes by program_id — resolve it to
                 // the first member run, whose detail renders the aggregated
-                // matrix panel (all batches) above the member's own results.
+                // matrix panel above the member's own results.
                 if (id.length === 32 && /^[0-9a-f]{32}$/.test(id)) {
                   try {
                     const prog = await api.getProgram(id);

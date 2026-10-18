@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   F16_BUILDUP,
   f16PresetList,
+  groupProgramRuns,
   matrixCaseCount,
   parseDegList,
   uniqueSorted,
+  type ProgramTaggedRun,
   type SweepKey,
 } from "./program";
 
@@ -81,6 +83,36 @@ describe("F16_BUILDUP", () => {
       expect(d[d.length - 1]).toBe(25);
       for (let i = 1; i < d.length; i++) expect(d[i] - d[i - 1]).toBe(12.5);
     }
+  });
+});
+
+describe("groupProgramRuns", () => {
+  const run = (id: string, over: Partial<ProgramTaggedRun> = {}): ProgramTaggedRun => ({
+    id,
+    program_id: null,
+    program_name: null,
+    ...over,
+  });
+
+  it("leaves runs without a program_id ungrouped (empty result)", () => {
+    expect(groupProgramRuns([run("a"), run("b")])).toEqual([]);
+    expect(groupProgramRuns([])).toEqual([]);
+  });
+
+  it("groups tagged runs by program_id, in first-appearance order", () => {
+    const p1 = run("m1", { program_id: "p1", program_name: "tail" });
+    const p2 = run("m2", { program_id: "p2", program_name: "wing" });
+    const plain = run("r");
+    const groups = groupProgramRuns([p1, plain, p2, p1]);
+    expect(groups.map((g) => g.programId)).toEqual(["p1", "p2"]);
+    expect(groups[0].programName).toBe("tail");
+    expect(groups[0].members.map((m) => m.id)).toEqual(["m1", "m1"]);
+    expect(groups[1].members.map((m) => m.id)).toEqual(["m2"]);
+  });
+
+  it("falls back to the program_id when the name is unavailable", () => {
+    const g = groupProgramRuns([run("m", { program_id: "p1" })]);
+    expect(g[0].programName).toBe("p1");
   });
 });
 

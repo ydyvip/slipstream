@@ -824,7 +824,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
       setSubmitError(null);
       try {
         // A program's response carries the shared program_id — navigate to it
-        // (all batches), falling back to the first member run id otherwise.
+        // (the aggregate view), falling back to the first member run id.
         const res = await api.createRun(file, config);
         onCreated(res.program_id ?? res.id);
       } catch (err) {
@@ -1919,10 +1919,7 @@ export function NewRunView({ onCreated, onImportMesh }: Props) {
               <span className="estimate-eq"> {t("program.estimateEq")}</span>
               {estimate >= CASE_CAP && (
                 <span className="estimate-warn">
-                  {t("program.batchedNotice", {
-                    n: Math.ceil(estimate / CASE_CAP),
-                    cap: CASE_CAP,
-                  })}
+                  {t("program.estimateWarn")}
                 </span>
               )}
             </div>

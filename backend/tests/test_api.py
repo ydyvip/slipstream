@@ -517,7 +517,7 @@ def _post_matrix(monkeypatch, cfg):
      "cannot be combined"),
     ({"case_matrix": {"alpha_deg": [0, 15]}, "trim": {"weight_g": 700}},
      "cannot be combined"),
-    ({"case_matrix": {"alpha_deg": [0] * 30, "beta_deg": [0] * 30}},
+    ({"case_matrix": {"alpha_deg": [0] * 45, "beta_deg": [0] * 45}},
      f"over the {main.matrix_program.MAX_PROGRAM_MEMBERS}-run cap"),
 ])
 def test_case_matrix_validation(monkeypatch, extra, fragment):
@@ -552,6 +552,51 @@ def test_case_matrix_fans_out_one_run_per_combination(monkeypatch):
     assert submitted[0]["name"] == "tail a0 b-2 e-8"
     assert submitted[1]["name"] == "tail a0 b-2 e0"
     assert submitted[12 - 1]["name"] == "tail a5 b4 e0"
+
+
+def test_case_matrix_1125_program_single_group(monkeypatch):
+    """The reported case: a 1125-point program (9×5×5×5) fits under the 2000
+    cap (SLIPSTREAM_MAX_PROGRAM_MEMBERS). It is submitted as one single group:
+    all 1125 members share one group_id and one program_id, and the response
+    is a single-group shape (no splitting markers anywhere)."""
+    cfg = {"name": "big", "unit": "mm", "wind_speed": 15, "quality": "coarse",
+           "case_matrix": {"alpha_deg": list(range(9)),
+                           "beta_deg": [0, 5, 10, 15, 20],
+                           "delta_a_deg": [-5, 0, 5, 10, 15],
+                           "delta_r_deg": [-10, -5, 0, 5, 10]}}
+    submitted = _matrix_children(monkeypatch)
+    import json as _json
+    with open(SPHERE, "rb") as fh:
+        res = client.post("/api/runs", files={"stl": ("s.stl", fh, "model/stl")},
+                          data={"config": _json.dumps(cfg)})
+    assert res.status_code == 201, res.text
+    body = res.json()
+    assert body["total"] == 1125
+    assert len(body["ids"]) == 1125
+    assert set(body.keys()) == {"id", "group_id", "ids", "kind",
+                                "program_id", "total"}
+    assert len({item["group_id"] for item in submitted}) == 1
+    assert len({item["cfg"]["program_id"] for item in submitted}) == 1
+    assert all("batch_index" not in item["cfg"]
+               and "batch_count" not in item["cfg"]
+               for item in submitted)
+
+
+def test_case_matrix_program_cap_read_dynamically(monkeypatch):
+    """The cap is read from matrix_program.MAX_PROGRAM_MEMBERS at validate
+    time, so SLIPSTREAM_MAX_PROGRAM_MEMBERS (or a code-level change) takes
+    effect without touching the validation itself."""
+    monkeypatch.setattr(main.matrix_program, "MAX_PROGRAM_MEMBERS", 1000)
+    cfg = {"name": "big", "unit": "mm", "wind_speed": 15, "quality": "coarse",
+           "case_matrix": {"alpha_deg": list(range(9)),
+                           "beta_deg": [0, 5, 10, 15, 20],
+                           "delta_a_deg": [-5, 0, 5, 10, 15],
+                           "delta_r_deg": [-10, -5, 0, 5, 10]}}
+    res, submitted = _post_matrix(monkeypatch, cfg)
+    assert res.status_code == 422
+    assert (f"over the {main.matrix_program.MAX_PROGRAM_MEMBERS}-run cap"
+            in res.json()["detail"])
+    assert not submitted
 
 
 def test_case_matrix_group_reports_metadata_sorted(monkeypatch):
@@ -631,15 +676,15 @@ def _seed_matrix_states(submitted):
     return made
 
 
-def test_case_matrix_program_batches_aggregate(monkeypatch):
-    """A >200-member program splits into ≤200-member batches under one
-    program_id, and GET /api/programs/{pid} joins them into one
-    wind-tunnel-ordered grid; the per-batch group reports its part marker."""
+def test_case_matrix_large_program_single_group(monkeypatch):
+    """A 228-member program is submitted as one single group under one
+    program_id, and GET /api/programs/{pid} renders the whole
+    wind-tunnel-ordered grid."""
     import json as _json
     submitted = _matrix_children(monkeypatch)
     cfg = {"name": "big", "unit": "mm", "wind_speed": 15, "quality": "coarse",
            "case_matrix": {"alpha_deg": list(range(19)),
-                           "beta_deg": list(range(12))}}  # 19 × 12 = 228 = 200 + 28
+                           "beta_deg": list(range(12))}}  # 19 × 12 = 228
     with open(SPHERE, "rb") as fh:
         res = client.post("/api/runs", files={"stl": ("s.stl", fh, "model/stl")},
                           data={"config": _json.dumps(cfg)})
@@ -647,18 +692,17 @@ def test_case_matrix_program_batches_aggregate(monkeypatch):
     body = res.json()
     assert body["kind"] == "matrix"
     assert len(body["program_id"]) == 32
-    assert body["total"] == 228 and body["batch_count"] == 2
-    assert len(body["ids"]) == 228 and len(body["batches"]) == 2
+    assert body["total"] == 228
+    assert len(body["ids"]) == 228
+    assert set(body.keys()) == {"id", "group_id", "ids", "kind",
+                                "program_id", "total"}
     assert len(submitted) == 228
-    per_batch = sorted(
-        (b["batch_index"], sum(1 for item in submitted
-                               if item["cfg"]["batch_index"] == b["batch_index"]))
-        for b in body["batches"])
-    assert per_batch == [(0, 200), (1, 28)]
-    assert len({item["group_id"] for item in submitted}) == 2
+    assert len({item["group_id"] for item in submitted}) == 1
     assert all(item["cfg"]["program_id"] == body["program_id"]
                for item in submitted)
-    assert all(item["cfg"]["batch_count"] == 2 for item in submitted)
+    assert all("batch_index" not in item["cfg"]
+               and "batch_count" not in item["cfg"]
+               for item in submitted)
 
     made = _seed_matrix_states(submitted)
     try:
@@ -666,36 +710,37 @@ def test_case_matrix_program_batches_aggregate(monkeypatch):
         g = client.get(f"/api/programs/{pid}").json()
         assert g["program_id"] == pid and g["kind"] == "matrix"
         assert g["name"] == "big"
-        assert g["batch_count"] == 2 and g["total"] == 228
+        assert g["total"] == 228
+        assert set(g.keys()) == {"program_id", "name", "kind", "wind_speed",
+                                 "quality", "runs", "total"}
         assert len(g["runs"]) == 228
-        assert {(b["batch_index"], b["total"], b["done"])
-                for b in g["batches"]} == {(0, 200, 200), (1, 28, 28)}
-        # alpha slowest, beta fastest — the grid stays contiguous across batches.
+        # alpha slowest, beta fastest — the grid stays contiguous.
         keys = [(r["alpha_deg"], r["beta_deg"]) for r in g["runs"]]
         assert keys == sorted(keys)
         assert keys[0] == (0, 0) and keys[-1] == (18, 11)
-        # The per-batch group endpoint carries the program markers and the part
-        # suffix, so history cards can tell " · part 1/2" apart.
-        grp = client.get(f"/api/groups/{body['batches'][0]['group_id']}").json()
-        assert grp["program_id"] == pid and grp["batch_index"] == 0
-        assert grp["batch_count"] == 2
-        assert grp["name"] == "big · part 1/2"
-        assert len(grp["runs"]) == 200
         assert client.get("/api/programs/nope").status_code == 404
+        # v10.2: the flat run list tags matrix members with program id/name so
+        # a collapsed sidebar row can collapse the whole program under it.
+        flat = client.get("/api/runs").json()
+        prog_rows = [r for r in flat if r.get("program_id") == pid]
+        assert len(prog_rows) == 228
+        assert all("batch_index" not in r for r in prog_rows)
+        assert all("batch_count" not in r for r in prog_rows)
+        assert prog_rows[0].get("program_name") == "big"
     finally:
         for rid in made:
             main.runner.states.pop(rid, None)
 
 
-def test_case_matrix_single_batch_backward_compatible(monkeypatch):
-    """A ≤200-member program keeps its old response shape (group_id/ids/kind)
-    while adding program_id and a one-element batches list — the aggregate
-    endpoint still works for it."""
+def test_case_matrix_single_group_returns_program_id(monkeypatch):
+    """A small program is submitted as one group and still carries the shared
+    program_id — one group, no splitting markers on the response or member
+    configs."""
     import json as _json
     submitted = _matrix_children(monkeypatch)
     cfg = {"name": "tail", "unit": "mm", "wind_speed": 15, "quality": "coarse",
            "case_matrix": {"alpha_deg": [0, 5], "beta_deg": [-2, 0, 4],
-                           "delta_e_deg": [-8, 0]}}  # 12 members, one batch
+                           "delta_e_deg": [-8, 0]}}  # 12 members
     with open(SPHERE, "rb") as fh:
         res = client.post("/api/runs", files={"stl": ("s.stl", fh, "model/stl")},
                           data={"config": _json.dumps(cfg)})
@@ -704,23 +749,142 @@ def test_case_matrix_single_batch_backward_compatible(monkeypatch):
     assert body["kind"] == "matrix"
     assert len(body["group_id"]) == 32
     assert len(body["program_id"]) == 32
-    assert body["total"] == 12 and body["batch_count"] == 1
-    assert len(body["batches"]) == 1 and body["batches"][0]["batch_index"] == 0
+    assert body["total"] == 12
+    assert set(body.keys()) == {"id", "group_id", "ids", "kind",
+                                "program_id", "total"}
     assert len(body["ids"]) == 12
+    assert len({item["group_id"] for item in submitted}) == 1
     assert all(item["cfg"]["program_id"] == body["program_id"]
                for item in submitted)
-    assert all(item["cfg"]["batch_index"] == 0 and item["cfg"]["batch_count"] == 1
+    assert all("batch_index" not in item["cfg"]
+               and "batch_count" not in item["cfg"]
                for item in submitted)
 
     made = _seed_matrix_states(submitted)
     try:
         g = client.get(f"/api/programs/{body['program_id']}").json()
         assert g["kind"] == "matrix" and g["name"] == "tail"
-        assert g["batch_count"] == 1 and g["total"] == 12
-        assert len(g["batches"]) == 1
+        assert g["total"] == 12
         assert len(g["runs"]) == 12
     finally:
         for rid in made:
             main.runner.states.pop(rid, None)
+
+
+def test_case_matrix_members_carry_program_fields_in_run_list(monkeypatch):
+    """Every matrix member in GET /api/runs is tagged with its shared
+    program_id and the base program name (suffix stripped), exactly like the
+    aggregate program view computes it."""
+    import json as _json
+    submitted = _matrix_children(monkeypatch)
+    cfg = {"name": "tail", "unit": "mm", "wind_speed": 15, "quality": "coarse",
+           "case_matrix": {"alpha_deg": [0, 5], "beta_deg": [-2, 0, 4],
+                           "delta_e_deg": [-8, 0]}}  # 12 members
+    with open(SPHERE, "rb") as fh:
+        res = client.post("/api/runs", files={"stl": ("s.stl", fh, "model/stl")},
+                          data={"config": _json.dumps(cfg)})
+    assert res.status_code == 201, res.text
+    pid = res.json()["program_id"]
+    made = _seed_matrix_states(submitted)
+    try:
+        runs = client.get("/api/runs").json()
+        members = [r for r in runs if r["program_id"] == pid]
+        assert len(members) == 12
+        assert all(r["program_name"] == "tail" for r in members)
+        assert all(r["name"].startswith("tail ") for r in members)
+        keys = {"id", "name", "status", "progress", "created_at", "wind_speed",
+                "quality", "group_id", "yaw_deg"}
+        assert keys <= set(members[0]), set(members[0]) - keys
+    finally:
+        for rid in made:
+            main.runner.states.pop(rid, None)
+
+
+def test_plain_runs_have_null_program_fields(monkeypatch):
+    monkeypatch.setattr(main.foamenv, "find_openfoam",
+                        lambda: "/opt/homebrew/bin/openfoam")
+    rid = "plain1"
+    main.runner.states[rid] = {
+        "id": rid, "name": "truck", "status": "queued", "progress": 0.0,
+        "message": "", "created_at": 5.0,
+        "config": {"unit": "mm", "wind_speed": 15, "quality": "coarse",
+                   "name": "truck"},
+        "group_id": None, "model": None, "mesh_cells": None, "result": None,
+        "error": None, "log": None}
+    try:
+        entry = next(r for r in client.get("/api/runs").json() if r["id"] == rid)
+        assert entry["program_id"] is None
+        assert entry["program_name"] is None
+    finally:
+        main.runner.states.pop(rid, None)
+
+
+def test_case_matrix_program_cancel(monkeypatch):
+    """POST /api/programs/{pid}/cancel skips terminal members and reports the
+    count of members it actually cancelled."""
+    import json as _json
+    submitted = _matrix_children(monkeypatch)
+    cfg = {"name": "tail", "unit": "mm", "wind_speed": 15, "quality": "coarse",
+           "case_matrix": {"alpha_deg": [0, 5], "beta_deg": [-2, 0, 4],
+                           "delta_e_deg": [-8, 0]}}  # 12 members
+    with open(SPHERE, "rb") as fh:
+        res = client.post("/api/runs", files={"stl": ("s.stl", fh, "model/stl")},
+                          data={"config": _json.dumps(cfg)})
+    assert res.status_code == 201, res.text
+    pid = res.json()["program_id"]
+    made = _seed_matrix_states(submitted)  # all "done" = terminal
+    try:
+        body = client.post(f"/api/programs/{pid}/cancel").json()
+        assert body == {"program_id": pid, "cancelled": 0, "skipped": 12}
+        # Flip two members to non-terminal; cancel should catch exactly those.
+        # (cancel persists the update, so give those runs a dir to write to.)
+        for rid in ("m1", "m2"):
+            (main.DATA_DIR / rid).mkdir(parents=True, exist_ok=True)
+        main.runner.states["m1"]["status"] = "queued"
+        main.runner.states["m2"]["status"] = "solving"
+        body = client.post(f"/api/programs/{pid}/cancel").json()
+        assert body == {"program_id": pid, "cancelled": 2, "skipped": 10}
+        assert main.runner.states["m1"]["status"] == "cancelled"
+        assert main.runner.states["m2"]["status"] == "cancelled"
+    finally:
+        for rid in made:
+            main.runner.states.pop(rid, None)
+
+
+def test_case_matrix_program_delete(monkeypatch):
+    """POST /api/programs/{pid}/delete removes every member except the ones
+    still executing, which it reports and keeps."""
+    import json as _json
+    submitted = _matrix_children(monkeypatch)
+    cfg = {"name": "tail", "unit": "mm", "wind_speed": 15, "quality": "coarse",
+           "case_matrix": {"alpha_deg": [0, 5], "beta_deg": [-2, 0, 4],
+                           "delta_e_deg": [-8, 0]}}  # 12 members
+    with open(SPHERE, "rb") as fh:
+        res = client.post("/api/runs", files={"stl": ("s.stl", fh, "model/stl")},
+                          data={"config": _json.dumps(cfg)})
+    assert res.status_code == 201, res.text
+    pid = res.json()["program_id"]
+    made = _seed_matrix_states(submitted)
+    try:
+        main.runner.executing.add("m3")  # pretend one member is running
+        body = client.post(f"/api/programs/{pid}/delete").json()
+        assert body == {"program_id": pid, "deleted": 11, "running": 1}
+        remaining = {r["id"] for r in client.get("/api/runs").json()}
+        assert "m3" in remaining
+        assert not ({"m0", "m1", "m2", "m4", "m11"} & remaining)
+        # The kept (running) member still forms the program.
+        left = client.get(f"/api/programs/{pid}").json()
+        assert left["total"] == 1 and [r["id"] for r in left["runs"]] == ["m3"]
+    finally:
+        main.runner.executing.discard("m3")
+        for rid in made:
+            main.runner.states.pop(rid, None)
+
+
+def test_case_matrix_program_404_for_unknown_program(monkeypatch):
+    assert client.post("/api/programs/nope/cancel").status_code == 404
+    assert client.post("/api/programs/nope/delete").status_code == 404
+    assert client.post("/api/programs/nope/cancel").json()["detail"] \
+        == "program not found"
 
 

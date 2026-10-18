@@ -12,4 +12,10 @@ export const sidebar: Record<string, string> = {
   "sidebar.deleteRun": "Delete run",
   "sidebar.runId": "Run ID {id}",
   "sidebar.cd": "Cd",
+  "sidebar.programDone": "{done}/{total}",
+  "sidebar.cancelAll": "Cancel all",
+  "sidebar.deleteAll": "Delete all",
+  "sidebar.cancelProgramConfirm": "Cancel {count} unfinished run(s) of \"{name}\"?",
+  "sidebar.deleteProgramConfirm": "Delete all {count} runs of \"{name}\"? This cannot be undone.",
+  "sidebar.deleteProgramRunning": "{running} run(s) still running were kept.",
 };
