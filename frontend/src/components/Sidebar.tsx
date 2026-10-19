@@ -4,6 +4,7 @@ import type { RunStatus, RunSummary } from "../api";
 import { groupProgramRuns, type ProgramRunGroup } from "../lib/program";
 import { StatusPill } from "./StatusPill";
 import { StorageFooter } from "./StorageFooter";
+import { LangToggle } from "./LangToggle";
 import { formatCoeff, formatTimestamp, shortRunId } from "../lib/format";
 
 interface Props {
@@ -205,7 +206,10 @@ export function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-head">
-        <div className="brand">{t("common.brand")}</div>
+        <div className="brand-row">
+          <div className="brand">{t("common.brand")}</div>
+          <LangToggle />
+        </div>
         <button className="btn btn-primary btn-block" onClick={onNew}>
           {t("sidebar.newRun")}
         </button>

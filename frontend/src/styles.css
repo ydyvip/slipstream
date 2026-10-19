@@ -14,20 +14,30 @@
   box-sizing: border-box;
 }
 
-/* ---------- language switch (top-right system menu) ---------- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--panel-2);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--panel);
+}
+
+/* ---------- language switch (sidebar-head, right of the brand) ---------- */
 
 .lang-toggle {
-  position: fixed;
-  top: 14px;
-  left: 185px;
-  z-index: 900;
   display: flex;
   align-items: stretch;
   border: 1px solid var(--border-strong);
   border-radius: 4px;
   background: var(--panel);
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 .lang-toggle button {
@@ -119,11 +129,18 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+.brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
 .brand {
   font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  margin-bottom: 12px;
 }
 
 .brand-mark {
@@ -1389,12 +1406,15 @@ body {
 /* ======================================================================= */
 
 body {
-  /* faint blueprint grid over the base */
+  /* grid-paper over the base — white line grid (wt-scheduler style).
+     --axis = colorBorderSecondary = rgba(255,255,255,0.12), same as
+     wt-scheduler's --line; keeps palette in themeConfig.ts. */
   background:
-    linear-gradient(rgba(0, 82, 231, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 82, 231, 0.03) 1px, transparent 1px),
+    linear-gradient(var(--axis) 1px, transparent 1px),
+    linear-gradient(90deg, var(--axis) 1px, transparent 1px),
     var(--bg);
-  background-size: 28px 28px, 28px 28px, auto;
+  background-size: 32px 32px, 32px 32px, auto;
+  background-attachment: fixed;
 }
 
 /* --- chamfered controls ------------------------------------------------ */

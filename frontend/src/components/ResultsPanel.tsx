@@ -141,16 +141,16 @@ export function ResultsPanel({ result, name }: { result: RunResult; name: string
           </button>
         </div>
       </div>
+      {warnings.length > 0 && (
+        <div className="result-warnings">
+          {warnings.map((w, i) => (
+            <div key={i} className="result-warning">
+              ⚠ {w}
+            </div>
+          ))}
+        </div>
+      )}
       <div className="results-body">
-        {warnings.length > 0 && (
-          <div className="result-warnings">
-            {warnings.map((w, i) => (
-              <div key={i} className="result-warning">
-                ⚠ {w}
-              </div>
-            ))}
-          </div>
-        )}
         <div className={`hero-stat${unconverged ? " hero-stat-untrusted" : ""}`}>
           <div className="hero-label">
             {t("detail.dragCoefficient")}

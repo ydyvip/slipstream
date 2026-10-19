@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import { useT } from "./i18n";
 import { usePoll } from "./hooks/usePoll";
-import { LangToggle } from "./components/LangToggle";
 import { Sidebar } from "./components/Sidebar";
 import { MeshImportView } from "./components/MeshImportView";
 import { NewRunView } from "./components/NewRunView";
@@ -151,7 +150,6 @@ export default function App() {
 
   return (
     <div className="app">
-      <LangToggle />
       {foamMissing && !backendDown && (
         <div className="banner-down">
           {t("app.openfoamMissing", {
