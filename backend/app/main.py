@@ -30,6 +30,23 @@ DATA_DIR = Path(
 app = FastAPI(title="Slipstream backend")
 runner = Runner(DATA_DIR)
 
+# Optional cross-origin access (network mode): when the UI is served from a
+# different origin than this API (e.g. a Vite dev server on another machine),
+# list the allowed browser origins comma-separated in SLIPSTREAM_CORS_ORIGINS.
+# When the frontend is served by this backend itself the calls are same-origin
+# and nothing needs to be set.
+_cors_origins = [o.strip() for o in (foamenv.env("CORS_ORIGINS") or "").split(",")
+                 if o.strip()]
+if _cors_origins:
+    from fastapi.middleware.cors import CORSMiddleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 # Speed ceilings per flow model. The incompressible cap is where that solver
 # stops being defensible (~Mach 0.55); the compressible one is a sanity bound,
 # not a physical limit.
@@ -1310,8 +1327,14 @@ def delete_run(run_id: str):
     return JSONResponse({"deleted": run_id})
 
 
-# Desktop/app mode: serve the built frontend when SLIPSTREAM_STATIC is set.
-_static = foamenv.env("STATIC")
-if _static and Path(_static).is_dir():
+# Serve the built frontend (same-origin UI): use SLIPSTREAM_STATIC when set,
+# otherwise default to the `frontend/dist` build next to this backend when one
+# exists — so the whole app is reachable from a single URL over the network
+# (run_server.py binds 0.0.0.0 by default). Nothing is mounted in API-only
+# setups without a build.
+_static = (foamenv.env("STATIC")
+           or str(Path(__file__).resolve().parent.parent.parent
+                  / "frontend" / "dist"))
+if Path(_static).is_dir():
     from fastapi.staticfiles import StaticFiles
     app.mount("/", StaticFiles(directory=_static, html=True), name="ui")

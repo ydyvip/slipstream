@@ -2,6 +2,8 @@
 fastapi
 uvicorn[standard]
 python-multipart
+# loads backend/.env configuration (host/port/paths) at startup
+python-dotenv
 numpy
 scipy
 trimesh

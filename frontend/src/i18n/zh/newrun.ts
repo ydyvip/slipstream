@@ -12,7 +12,7 @@ export const newrun: Record<string, string> = {
   "newrun.qualityFine": "约 30+ 分钟",
 
   // Validation + error messages.
-  "newrun.errBackend": "无法连接后端——服务器是否在 :8000 运行？",
+  "newrun.errBackend": "无法连接后端——请确认后端服务已启动。",
   "newrun.errStartRun": "启动仿真失败：{msg}",
   "newrun.errNotStl": "“{name}”不是 .stl 文件",
   "newrun.errParse": "无法解析 STL：{msg}",

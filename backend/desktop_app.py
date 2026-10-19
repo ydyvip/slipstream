@@ -16,7 +16,22 @@ import time
 import urllib.request
 from pathlib import Path
 
-PORT = 8321
+DEFAULT_PORT = 8321
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _server_addr() -> tuple[str, int]:
+    """Bind address + port for the local UI. Defaults to loopback so the
+    desktop window is private; set SLIPSTREAM_HOST=0.0.0.0 (in backend/.env
+    or the shell) to expose it to your LAN."""
+    return os.environ.get("SLIPSTREAM_HOST", "127.0.0.1"), _int_env(
+        "SLIPSTREAM_PORT", DEFAULT_PORT)
 
 
 def _resource(rel: str) -> Path:
@@ -37,6 +52,12 @@ def _wait_for(url: str, timeout: float = 20.0) -> bool:
 
 
 def main() -> None:
+    # Apply backend/.env before reading any setting, so the desktop UI honors
+    # the same SLIPSTREAM_* configuration as the web server.
+    from app import load_dotenv  # noqa: WPS433 (package import before settings)
+    load_dotenv()
+    host, port = _server_addr()
+
     # Per-user data dir (never write inside the .app bundle). NOT under
     # ~/Library/Application Support: OpenFOAM cannot handle spaces in paths.
     data_dir = Path.home() / ".slipstream"
@@ -54,7 +75,7 @@ def main() -> None:
     # If the port is taken, assume another Slipstream instance owns it and
     # just open a window onto it.
     with socket.socket() as s:
-        port_free = s.connect_ex(("127.0.0.1", PORT)) != 0
+        port_free = s.connect_ex(("127.0.0.1", port)) != 0
 
     if port_free:
         import uvicorn
@@ -62,10 +83,10 @@ def main() -> None:
         from app.main import app  # noqa: WPS433 (import after env setup)
 
         server = uvicorn.Server(uvicorn.Config(
-            app, host="127.0.0.1", port=PORT, log_level="warning"))
+            app, host=host, port=port, log_level="warning"))
         threading.Thread(target=server.run, daemon=True).start()
 
-    url = f"http://127.0.0.1:{PORT}"
+    url = f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}"
     if not _wait_for(f"{url}/api/health"):
         print("backend failed to start", file=sys.stderr)
         sys.exit(1)

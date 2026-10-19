@@ -161,7 +161,7 @@ export default function App() {
       )}
       {backendDown && (
         <div className="banner-down">
-          {t("app.backendDown", { addr: "localhost:8000" })}
+          {t("app.backendDown", { addr: window.location.host })}
         </div>
       )}
       <div className="app-body">

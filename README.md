@@ -138,8 +138,12 @@ cd ../frontend && npx tsc --noEmit && npm test
 ```sh
 $env:SLIPSTREAM_OPENFOAM = "C:\path\to\slipstream\backend\scripts\openfoam.cmd"
 cd C:\path\to\slipstream\backend
-python -m uvicorn app.main:app --port 8000
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
+
+The settings above can live in `backend\.env` (auto-loaded — see
+`backend/.env.example`), so `python run_server.py` starts the backend bound to
+the network with nothing to export. See `backend/README.md` for details.
 
 The backend tests don't need OpenFOAM. `backend/tests/e2e_smoke.py` runs a real
 coarse analysis against a backend on `:8000` and does.

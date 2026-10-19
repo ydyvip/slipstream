@@ -15,7 +15,7 @@ export const newrun: Record<string, string> = {
   "newrun.qualityFine": "~30+ min",
 
   // Validation + error messages.
-  "newrun.errBackend": "Backend unreachable — is the server running on :8000?",
+  "newrun.errBackend": "Backend unreachable — is the backend server running?",
   "newrun.errStartRun": "Failed to start run: {msg}",
   "newrun.errNotStl": "\"{name}\" is not an .stl file",
   "newrun.errParse": "Could not parse STL: {msg}",

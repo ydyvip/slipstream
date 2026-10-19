@@ -27,6 +27,14 @@ python3 -m venv .venv
 
 ```sh
 cd backend
+.venv/bin/python run_server.py
+```
+
+`run_server.py` binds to **0.0.0.0 by default** so the API is reachable from
+other machines on your LAN, and reads its host/port from the environment. The
+plain uvicorn CLI variant works too:
+
+```sh
 .venv/bin/uvicorn app.main:app --port 8000
 ```
 
@@ -34,6 +42,35 @@ Launch from a shell where `/opt/homebrew/bin` is on `PATH` (the default on Homeb
 macOS) so the `openfoam` wrapper resolves; the backend calls it with an absolute
 path when it exists, and falls back to `PATH` lookup otherwise. On Windows, point
 `SLIPSTREAM_OPENFOAM` at `scripts\openfoam.cmd` first — see below.
+
+## Configuration & network access (`.env`)
+
+All backend settings are `SLIPSTREAM_*` environment variables, and they can be
+kept in a `backend/.env` file that is auto-loaded on startup (a real environment
+variable always wins over `.env`). Copy the template and edit it:
+
+```sh
+copy backend\.env.example backend\.env   # PowerShell
+```
+
+Relevant keys for running over the network:
+
+- `SLIPSTREAM_HOST` — bind address. `0.0.0.0` exposes the API/UI to the LAN
+  (**network access**); `127.0.0.1` keeps it local-only. Default in
+  `run_server.py`: `0.0.0.0`.
+- `SLIPSTREAM_PORT` — listening port (default `8000`).
+- `SLIPSTREAM_CORS_ORIGINS` — comma-separated browser origins allowed to call
+  the API cross-origin, only needed when the UI runs from a different origin
+  (empty = same-origin only).
+- `SLIPSTREAM_OPENFOAM`, `SLIPSTREAM_DOCKER_IMAGE` — solver wiring (Windows).
+- `SLIPSTREAM_DATA_DIR`, `SLIPSTREAM_STATIC`, `SLIPSTREAM_MAX_PROGRAM_MEMBERS`
+  — run-store location, built-frontend serving, and the case-matrix cap.
+
+To serve the built web app (not just the API) over the network, build the
+frontend once and point `SLIPSTREAM_STATIC` at it, then run
+`run_server.py`; open `http://<this-machine-ip>:8000` from any device on the
+LAN. Watch firewall rules that block inbound 8000 (Windows Firewall /
+macOS Application Firewall) so the port stays reachable.
 
 ## Windows + Docker (Docker-backed OpenFOAM)
 
@@ -86,6 +123,10 @@ cd backend
 $env:SLIPSTREAM_OPENFOAM = "C:\path\to\slipstream\backend\scripts\openfoam.cmd"
 .venv\Scripts\python -m uvicorn app.main:app --port 8000
 ```
+
+The `SLIPSTREAM_OPENFOAM` line (and anything else) can live in `backend\.env`
+instead — it is auto-loaded — so `python run_server.py` works with no manual
+exports and binds to the LAN (see [Configuration & network access](#configuration--network-access-env)).
 
 Confirm the wrapper resolved with `GET /api/health` — it returns
 `"openfoam": "C:\\...\\scripts\\openfoam.cmd"`. Stage output lands in
