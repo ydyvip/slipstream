@@ -1,0 +1,76 @@
+# Slipstream deployment (Docker Compose file format 3.8)
+#
+#   cp deploy/.env.example .env    # optional: edit ports/data path/workers
+#   docker compose up -d
+#
+# The image is loaded from the exported tarball, not pulled from a registry:
+#   docker load -i slipstream-<version>-linux-amd64.tar.gz
+#
+# Modern Compose prints "the attribute `version` is obsolete" for any 3.x file;
+# it is kept so Docker Compose 1.27+ and 2.x/3.x compatible tooling all accept
+# the file, as requested.
+version: "3.8"
+
+services:
+  slipstream:
+    image: ${SLIPSTREAM_IMAGE:-slipstream:0.2.0}
+    container_name: ${SLIPSTREAM_CONTAINER_NAME:-slipstream}
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+
+    ports:
+      - "${SLIPSTREAM_BIND_ADDR:-0.0.0.0}:${SLIPSTREAM_HTTP_PORT:-8000}:8000"
+
+    environment:
+      # The app itself (see backend/.env.example)
+      SLIPSTREAM_HOST: "0.0.0.0"
+      SLIPSTREAM_PORT: "8000"
+      SLIPSTREAM_DATA_DIR: "/data"
+      SLIPSTREAM_STATIC: "/app/ui"
+      # Concurrent analyses: each run solves on 6 MPI ranks. 2 workers need
+      # ~12 threads; use 1 on smaller machines (the deploy script picks a
+      # default based on the host CPU count).
+      SLIPSTREAM_WORKERS: "${SLIPSTREAM_WORKERS:-2}"
+      SLIPSTREAM_MAX_PROGRAM_MEMBERS: "${SLIPSTREAM_MAX_PROGRAM_MEMBERS:-2000}"
+      SLIPSTREAM_CORS_ORIGINS: "${SLIPSTREAM_CORS_ORIGINS:-}"
+      TZ: "${TZ:-Asia/Shanghai}"
+
+    volumes:
+      # Named volume by default. Set SLIPSTREAM_DATA_PATH to a host directory
+      # (e.g. /srv/slipstream/data) for a bind mount instead. Run data, meshes,
+      # imported meshes and repairs all live under /data.
+      - ${SLIPSTREAM_DATA_PATH:-slipstream-data}:/data
+
+    # OpenMPI uses shared memory for rank-to-rank transfers; the default 64 MB
+    # /dev/shm is too small for real meshes.
+    shm_size: "${SLIPSTREAM_SHM_SIZE:-1gb}"
+
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4).status == 200 else 1)"
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Compose 3.8 keeps resource limits under deploy (honoured by Swarm; plain
+    # `docker compose` ignores them). Uncomment and tune if the host is shared.
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: "12"
+    #       memory: 12g
+
+volumes:
+  slipstream-data:
+    name: ${SLIPSTREAM_VOLUME_NAME:-slipstream-data}

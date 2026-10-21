@@ -25,5 +25,10 @@ examples/validation/*.stl
 .omo/
 .pytest_cache/
 
+# Exported Docker deployment artifacts (image tarballs are GBs)
+dist-docker/
+slipstream-*.tar.gz
+slipstream-*.tar
+
 # Real-case CFD driver workspace (heavy OpenFOAM cases; results are copied into aero/raw/)
 aero/runs/

@@ -1,0 +1,31 @@
+# Keep the build context small and never bake local state/secrets into the image.
+.git
+.github
+.omo
+.env
+**/.env
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+
+# Python
+backend/.venv
+backend/data
+backend/build
+backend/dist
+backend/*.spec
+**/*.egg-info
+
+# Node
+frontend/node_modules
+
+# Packaging / docs / sample data not needed at runtime
+dist-docker
+docs
+assets
+examples
+aero/runs
+aero/raw
+*.tar
+*.tar.gz
+*.zip
